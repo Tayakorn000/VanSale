@@ -1,0 +1,35 @@
+package com.example.myapplication1.ui.theme
+
+import androidx.compose.material3.Typography
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import com.example.myapplication1.R
+
+// 🌟 ประกาศตัวแปรดึงฟอนต์ Sarabun มาใช้
+val SarabunFontFamily = FontFamily(
+    Font(R.font.sarabun_regular, FontWeight.Normal)
+    // ถ้าคุณมีไฟล์ฟอนต์ตัวหนา (Bold) ด้วย ให้เพิ่มบรรทัดล่างนี้เข้าไป (ถ้าไม่มีไม่ต้องใส่ครับ)
+    // , Font(R.font.sarabun_bold, FontWeight.Bold)
+)
+
+// 🌟 บังคับให้ Material3 ทุกขนาดตัวอักษรในแอป หันมาใช้ Sarabun ทั้งหมด
+val Typography = Typography(
+    displayLarge = TextStyle(fontFamily = SarabunFontFamily, fontWeight = FontWeight.Normal, fontSize = 57.sp),
+    displayMedium = TextStyle(fontFamily = SarabunFontFamily, fontWeight = FontWeight.Normal, fontSize = 45.sp),
+    displaySmall = TextStyle(fontFamily = SarabunFontFamily, fontWeight = FontWeight.Normal, fontSize = 36.sp),
+    headlineLarge = TextStyle(fontFamily = SarabunFontFamily, fontWeight = FontWeight.Normal, fontSize = 32.sp),
+    headlineMedium = TextStyle(fontFamily = SarabunFontFamily, fontWeight = FontWeight.Normal, fontSize = 28.sp),
+    headlineSmall = TextStyle(fontFamily = SarabunFontFamily, fontWeight = FontWeight.Normal, fontSize = 24.sp),
+    titleLarge = TextStyle(fontFamily = SarabunFontFamily, fontWeight = FontWeight.Normal, fontSize = 22.sp),
+    titleMedium = TextStyle(fontFamily = SarabunFontFamily, fontWeight = FontWeight.Medium, fontSize = 16.sp),
+    titleSmall = TextStyle(fontFamily = SarabunFontFamily, fontWeight = FontWeight.Medium, fontSize = 14.sp),
+    bodyLarge = TextStyle(fontFamily = SarabunFontFamily, fontWeight = FontWeight.Normal, fontSize = 16.sp),
+    bodyMedium = TextStyle(fontFamily = SarabunFontFamily, fontWeight = FontWeight.Normal, fontSize = 14.sp),
+    bodySmall = TextStyle(fontFamily = SarabunFontFamily, fontWeight = FontWeight.Normal, fontSize = 12.sp),
+    labelLarge = TextStyle(fontFamily = SarabunFontFamily, fontWeight = FontWeight.Medium, fontSize = 14.sp),
+    labelMedium = TextStyle(fontFamily = SarabunFontFamily, fontWeight = FontWeight.Medium, fontSize = 12.sp),
+    labelSmall = TextStyle(fontFamily = SarabunFontFamily, fontWeight = FontWeight.Medium, fontSize = 11.sp)
+)

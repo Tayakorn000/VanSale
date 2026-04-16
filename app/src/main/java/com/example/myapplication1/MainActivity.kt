@@ -17,6 +17,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import android.view.WindowManager
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,9 +34,13 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.CloudDone
+import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -333,6 +341,33 @@ suspend fun exportCDOrganizerToPhone(context: Context, db: AppDatabase, products
     }
 }
 
+// ไอคอนแสดงสถานะการเชื่อมต่อ — เขียวเมื่อมีอินเทอร์เน็ตจริง, เทาเมื่อออฟไลน์/ติด Captive Portal
+@Composable
+fun SyncStatusIcon() {
+    val context = LocalContext.current
+    var online by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            online = hasRealInternet(context)
+            delay(10_000L)
+        }
+    }
+
+    val tint by animateColorAsState(
+        targetValue = if (online) Color(0xFF22C55E) else Color(0xFF9CA3AF),
+        animationSpec = tween(durationMillis = 400),
+        label = "syncTint"
+    )
+
+    Icon(
+        imageVector = if (online) Icons.Rounded.CloudDone else Icons.Rounded.CloudOff,
+        contentDescription = if (online) "ออนไลน์" else "ออฟไลน์",
+        tint = tint,
+        modifier = Modifier.size(22.dp).padding(end = 4.dp)
+    )
+}
+
 @Composable
 fun DashedDivider() {
     Canvas(modifier = Modifier.fillMaxWidth().height(1.dp)) {
@@ -356,6 +391,14 @@ class MainActivity1 : ComponentActivity() {
             requestBluetoothPermissions.launch(arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.ACCESS_FINE_LOCATION))
         }
 
+        // Kiosk: fullscreen immersive + ไม่ให้จอดับ + ซ่อน status/nav bar
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+
         try {
             startLockTask()
         } catch (e: Exception) {
@@ -370,6 +413,9 @@ class MainActivity1 : ComponentActivity() {
                     var userRole by remember { mutableStateOf("") }
                     var routeId by remember { mutableStateOf("") }
                     var currentScreen by remember { mutableStateOf(AppScreen.BILLING) }
+
+                    // Kiosk: กดปุ่ม back ที่หน้าหลักไม่ออกจากแอป
+                    BackHandler(enabled = currentScreen == AppScreen.BILLING) { /* สวาปาม */ }
 
                     if (!isLoggedIn) {
                         LoginScreen(onLoginSuccess = { id, role, route ->
@@ -964,36 +1010,51 @@ fun BillingScreen(
             CenterAlignedTopAppBar(
                 title = { Text("เปิดบิล (สาย $routeId)", fontWeight = FontWeight.Bold) },
                 actions = {
+                    SyncStatusIcon()
                     Box {
                         IconButton(onClick = { showMenu = !showMenu }) { Icon(Icons.Default.MoreVert, "Menu") }
                         DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                            val isAdmin = userRole == "ADMIN" || driverId == "9999"
+
+                            // เมนูสำหรับคนขับทุกคน
                             DropdownMenuItem(text = { Text("📜 ประวัติบิล / ปริ้นย้อนหลัง") }, onClick = { showMenu = false; onNavigateToHistory() })
-                            DropdownMenuItem(text = { Text("1. โหลดสรุปยอด (Excel)") }, onClick = { showMenu = false; exportExcelLauncher.launch("Summary_Report.csv") })
-                            DropdownMenuItem(
-                                text = { Text("2. บันทึกไฟล์ CD Organizer ลงเครื่อง") },
-                                onClick = {
+                            DropdownMenuItem(text = { Text("☁️ อัปโหลดบิลตกค้างขึ้น Cloud") }, onClick = { showMenu = false; scope.launch { Toast.makeText(context, "กำลังตรวจสอบบิลตกค้าง...", Toast.LENGTH_SHORT).show(); syncPendingCloudOrders(context, driverId, routeId) } })
+
+                            // เมนูเฉพาะ Admin (ล็อกอินรหัส 9999)
+                            if (isAdmin) {
+                                Divider()
+                                DropdownMenuItem(text = { Text("1. โหลดสรุปยอด (Excel)") }, onClick = { showMenu = false; exportExcelLauncher.launch("Summary_Report.csv") })
+                                DropdownMenuItem(
+                                    text = { Text("2. บันทึกไฟล์ CD Organizer ลงเครื่อง") },
+                                    onClick = {
+                                        showMenu = false
+                                        scope.launch {
+                                            Toast.makeText(context, "กำลังสร้างไฟล์...", Toast.LENGTH_SHORT).show()
+                                            val (isSuccess, message) = exportCDOrganizerToPhone(context, db, products, driverId, routeId)
+                                            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                )
+                                DropdownMenuItem(text = { Text("3. 🔄 โหลดข้อมูลอัปเดตจาก Cloud") }, onClick = {
                                     showMenu = false
                                     scope.launch {
-                                        Toast.makeText(context, "กำลังสร้างไฟล์...", Toast.LENGTH_SHORT).show()
-                                        val (isSuccess, message) = exportCDOrganizerToPhone(context, db, products, driverId, routeId)
-                                        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                                        Toast.makeText(context, "กำลังโหลดข้อมูล...", Toast.LENGTH_SHORT).show()
+                                        downloadCustomersFromCloud(context)
+                                        downloadEmployeesFromCloud(context)
+                                        downloadRoutesFromCloud(context)
+                                        Toast.makeText(context, "โหลดข้อมูลสำเร็จ", Toast.LENGTH_SHORT).show()
                                     }
-                                }
-                            )
-                            DropdownMenuItem(text = { Text("3. ☁️ อัปโหลดบิลตกค้างขึ้น Cloud") }, onClick = { showMenu = false; scope.launch { Toast.makeText(context, "กำลังตรวจสอบบิลตกค้าง...", Toast.LENGTH_SHORT).show(); syncPendingCloudOrders(context, driverId, routeId) } })
-                            DropdownMenuItem(text = { Text("4. 🔄 โหลดข้อมูลอัปเดตจาก Cloud") }, onClick = {
-                                showMenu = false
-                                scope.launch {
-                                    Toast.makeText(context, "กำลังโหลดข้อมูล...", Toast.LENGTH_SHORT).show()
-                                    downloadCustomersFromCloud(context)
-                                    downloadEmployeesFromCloud(context)
-                                    downloadRoutesFromCloud(context)
-                                    Toast.makeText(context, "โหลดข้อมูลสำเร็จ", Toast.LENGTH_SHORT).show()
-                                }
-                            })
-                            if (userRole == "ADMIN" || driverId == "9999") {
-                                Divider()
-                                DropdownMenuItem(text = { Text("⚙️ ตั้งค่าระบบหลังบ้าน (Admin)") }, onClick = { showMenu = false; onNavigateToAdmin() })
+                                })
+                                DropdownMenuItem(text = { Text("⚙️ ตั้งค่าระบบหลังบ้าน") }, onClick = { showMenu = false; onNavigateToAdmin() })
+                                DropdownMenuItem(text = { Text("🔓 ปลดล็อก Kiosk (ออกจากแอป)") }, onClick = {
+                                    showMenu = false
+                                    try {
+                                        (context as? android.app.Activity)?.stopLockTask()
+                                        Toast.makeText(context, "ปลดล็อก Kiosk แล้ว", Toast.LENGTH_SHORT).show()
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "ปลดล็อกไม่สำเร็จ: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                                })
                             }
                         }
                     }

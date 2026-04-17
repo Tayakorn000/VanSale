@@ -11,4 +11,8 @@ interface OrderItemDao {
     @Query("SELECT * FROM order_items")
     @JvmSuppressWildcards
     suspend fun getAllOrderItemsSync(): List<OrderItem>
+
+    @Query("SELECT * FROM order_items WHERE order_id = :orderId")
+    @JvmSuppressWildcards
+    suspend fun getItemsByOrderId(orderId: Long): List<OrderItem>
 }

@@ -90,29 +90,34 @@ data class PrintData(val customer: Customer, val quantities: Map<Long, Int>, val
 // Mutex กันอัปโหลดชนกันระหว่าง auto-sync กับปุ่มปริ้น
 val syncMutex = Mutex()
 
-// เช็คอินเทอร์เน็ตจริง: ต้องผ่านทั้ง NET_CAPABILITY_VALIDATED และตอบ 204 จาก generate_204
-// (ถ้าติด Captive Portal จะได้ 200+HTML แทน จึงถือเป็นออฟไลน์)
+// เช็คอินเทอร์เน็ตจริง: ยิง generate_204 เป็นตัวตัดสิน (Captive Portal จะได้ 200+HTML แทน 204)
+// ไม่เช็ค NET_CAPABILITY_VALIDATED เพราะเน็ตมือถือบางเครื่อง/บาง carrier ไม่ตั้ง flag นี้
 suspend fun hasRealInternet(context: Context): Boolean {
     return withContext(Dispatchers.IO) {
         try {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val network = cm.activeNetwork ?: return@withContext false
-            val caps = cm.getNetworkCapabilities(network) ?: return@withContext false
-            if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) return@withContext false
-            if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) return@withContext false
+            val network = cm.activeNetwork
+            if (network == null) { Log.d("VanSync", "no active network"); return@withContext false }
+            val caps = cm.getNetworkCapabilities(network)
+            if (caps == null || !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                Log.d("VanSync", "no INTERNET capability"); return@withContext false
+            }
 
             val url = URL("http://clients3.google.com/generate_204")
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "GET"
-            conn.connectTimeout = 2000
-            conn.readTimeout = 2000
+            conn.connectTimeout = 3000
+            conn.readTimeout = 3000
             conn.useCaches = false
             conn.instanceFollowRedirects = false
             val code = conn.responseCode
             val len = conn.contentLength
             conn.disconnect()
-            code == 204 && len <= 0
+            val ok = code == 204 && len <= 0
+            Log.d("VanSync", "probe code=$code len=$len ok=$ok")
+            ok
         } catch (e: Exception) {
+            Log.d("VanSync", "probe failed: ${e.message}")
             false
         }
     }
@@ -213,7 +218,12 @@ suspend fun downloadCustomersFromCloud(context: Context): Boolean {
     }
 }
 
-suspend fun uploadToGoogleSheet(deliveryNo: String, taxNo: String, date: String, store: String, branch: String, taxId: String, total: Double, empId: String): Boolean {
+suspend fun uploadToGoogleSheet(
+    deliveryNo: String, taxNo: String, date: String,
+    store: String, branch: String, taxId: String,
+    total: Double, empId: String,
+    itemsJson: JSONArray, itemsText: String
+): Boolean {
     return try {
         val url = URL(SCRIPT_URL)
         val conn = url.openConnection() as HttpURLConnection
@@ -221,6 +231,7 @@ suspend fun uploadToGoogleSheet(deliveryNo: String, taxNo: String, date: String,
         conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
         conn.doOutput = true
         conn.connectTimeout = 5000
+        conn.readTimeout = 10000
         val jsonObject = JSONObject().apply {
             put("deliveryNo", deliveryNo)
             put("taxNo", taxNo)
@@ -230,6 +241,8 @@ suspend fun uploadToGoogleSheet(deliveryNo: String, taxNo: String, date: String,
             put("taxId", taxId)
             put("total", total.toString())
             put("empId", empId)
+            put("items", itemsJson)       // array — [{name, qty, price, subtotal}, ...]
+            put("itemsText", itemsText)   // สำรอง — string พร้อมเขียนลง cell เดียว
         }
         val jsonInputString = jsonObject.toString()
         conn.outputStream.use { os ->
@@ -238,18 +251,24 @@ suspend fun uploadToGoogleSheet(deliveryNo: String, taxNo: String, date: String,
         }
         val responseCode = conn.responseCode
         conn.disconnect()
-        responseCode in 200..299
-    } catch (e: Exception) { false }
+        val ok = responseCode in 200..299
+        Log.d("VanSync", "upload $deliveryNo → code=$responseCode ok=$ok")
+        ok
+    } catch (e: Exception) {
+        Log.d("VanSync", "upload failed: ${e.message}")
+        false
+    }
 }
 
 suspend fun syncPendingCloudOrders(context: Context, driverId: String, routeId: String) {
     // ออฟไลน์หรือติด Captive Portal → เงียบออกไป ไม่รบกวน UI
-    if (!hasRealInternet(context)) return
+    if (!hasRealInternet(context)) { Log.d("VanSync", "skip: no real internet"); return }
 
     syncMutex.withLock {
         withContext(Dispatchers.IO) {
             val db = AppDatabase.getDatabase(context)
             val unsyncedOrders = db.orderDao().getUnsyncedOrders()
+            Log.d("VanSync", "unsynced orders: ${unsyncedOrders.size}")
             if (unsyncedOrders.isEmpty()) return@withContext
 
             val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
@@ -257,6 +276,7 @@ suspend fun syncPendingCloudOrders(context: Context, driverId: String, routeId: 
             val offset = prefs.getLong("invoice_offset", 0L)
 
             val allCustomers = db.customerDao().getAllCustomersSync()
+            val allProducts = db.productDao().getAllProducts().first()
             for (order in unsyncedOrders) {
                 val customer = allCustomers.find { it.id == order.customer_id } ?: continue
                 val dateStr = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(order.timestamp))
@@ -267,7 +287,30 @@ suspend fun syncPendingCloudOrders(context: Context, driverId: String, routeId: 
                 val deliveryNo = if (customer.print_delivery) baseInvoice else "-"
                 val taxNo = if (customer.print_tax) "V$baseInvoice" else "-"
 
-                val isSuccess = uploadToGoogleSheet(deliveryNo, taxNo, dateStr, customer.store_name, customer.branch_code, customer.tax_id, order.total_amount, driverId)
+                // ดึงรายการสินค้าของบิลนี้ สร้างทั้งรูปแบบ array (items) และ string (itemsText)
+                val items = db.orderItemDao().getItemsByOrderId(order.id)
+                val itemsJson = JSONArray()
+                val itemsTextBuilder = StringBuilder()
+                for (it in items) {
+                    val product = allProducts.find { p -> p.id == it.product_id }
+                    val name = product?.name ?: "สินค้า#${it.product_id}"
+                    val price = product?.price ?: 0.0
+                    itemsJson.put(JSONObject().apply {
+                        put("name", name)
+                        put("qty", it.quantity)
+                        put("price", price)
+                        put("subtotal", it.subtotal)
+                    })
+                    if (itemsTextBuilder.isNotEmpty()) itemsTextBuilder.append(", ")
+                    itemsTextBuilder.append("$name x${it.quantity} (${"%.0f".format(it.subtotal)}฿)")
+                }
+
+                val isSuccess = uploadToGoogleSheet(
+                    deliveryNo, taxNo, dateStr,
+                    customer.store_name, customer.branch_code, customer.tax_id,
+                    order.total_amount, driverId,
+                    itemsJson, itemsTextBuilder.toString()
+                )
                 if (isSuccess) {
                     db.orderDao().markOrderAsSynced(order.id)
                 }

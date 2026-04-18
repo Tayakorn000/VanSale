@@ -9,6 +9,7 @@ interface OrderDao {
     suspend fun insert(order: Order): Long
 
     @Update
+    @JvmSuppressWildcards
     suspend fun update(order: Order): Int
 
     @Query("SELECT * FROM orders WHERE id = :orderId")
@@ -24,8 +25,10 @@ interface OrderDao {
     suspend fun getUnsyncedOrders(): List<Order>
 
     @Query("UPDATE orders SET is_synced = 1 WHERE id = :orderId")
+    @JvmSuppressWildcards
     suspend fun markOrderAsSynced(orderId: Long): Int
 
     @Query("UPDATE orders SET is_synced = 0, total_amount = :total WHERE id = :orderId")
+    @JvmSuppressWildcards
     suspend fun updateTotalAndUnSync(orderId: Long, total: Double): Int
 }

@@ -9,12 +9,15 @@ interface OrderItemDao {
     suspend fun insertAll(orderItems: List<OrderItem>): List<Long>
 
     @Update
+    @JvmSuppressWildcards
     suspend fun update(item: OrderItem): Int
 
     @Delete
+    @JvmSuppressWildcards
     suspend fun delete(item: OrderItem): Int
 
     @Query("DELETE FROM order_items WHERE order_id = :orderId")
+    @JvmSuppressWildcards
     suspend fun deleteByOrderId(orderId: Long): Int
 
     @Query("SELECT * FROM order_items")

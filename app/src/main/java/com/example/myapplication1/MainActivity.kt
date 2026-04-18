@@ -66,6 +66,7 @@ import com.example.myapplication1.ui.billing.BillingViewModel
 import com.example.myapplication1.ui.theme.MyApplication1Theme
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -81,7 +82,8 @@ import java.util.Date
 import java.util.Locale
 
 // SCRIPT_URL ถูกกำหนดผ่าน BuildConfig จากไฟล์ local.properties (ไม่อัปขึ้น git)
-val SCRIPT_URL: String = BuildConfig.SCRIPT_URL
+val SCRIPT_URL: String = if (BuildConfig.SCRIPT_URL.isNotEmpty()) BuildConfig.SCRIPT_URL 
+                         else "https://script.google.com/macros/s/AKfycbxBaZFmW3SGF_H-wEVtKNzTTHDIw2z8PkBLdu_-W1z6VmrW81iilq-KGps8n6sjqqEv/exec"
 
 enum class AppScreen { BILLING, ADMIN, HISTORY }
 
@@ -90,35 +92,47 @@ data class PrintData(val customer: Customer, val quantities: Map<Long, Int>, val
 // Mutex กันอัปโหลดชนกันระหว่าง auto-sync กับปุ่มปริ้น
 val syncMutex = Mutex()
 
-// เช็คอินเทอร์เน็ตจริง: ยิง generate_204 เป็นตัวตัดสิน (Captive Portal จะได้ 200+HTML แทน 204)
-// ไม่เช็ค NET_CAPABILITY_VALIDATED เพราะเน็ตมือถือบางเครื่อง/บาง carrier ไม่ตั้ง flag นี้
+// ตรวจว่ามีเครือข่ายที่มีความสามารถ INTERNET หรือไม่ (ไม่ probe, เร็ว, ใช้ใน auto-sync)
+fun hasNetwork(context: Context): Boolean {
+    return try {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(network) ?: return false
+        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    } catch (_: Exception) { false }
+}
+
+// เช็คอินเทอร์เน็ตจริง (สำหรับไอคอนสถานะ):
+// 1) ถ้า Android ตั้ง VALIDATED แล้ว → เชื่อ (เร็ว, ไม่ใช้เน็ต)
+// 2) ไม่งั้น → probe generate_204
+// 3) probe ล้มเหลว → fallback: เชื่อแค่ว่ามี INTERNET capability
 suspend fun hasRealInternet(context: Context): Boolean {
     return withContext(Dispatchers.IO) {
         try {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val network = cm.activeNetwork
-            if (network == null) { Log.d("VanSync", "no active network"); return@withContext false }
-            val caps = cm.getNetworkCapabilities(network)
-            if (caps == null || !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+            val network = cm.activeNetwork ?: run { Log.d("VanSync", "no active network"); return@withContext false }
+            val caps = cm.getNetworkCapabilities(network) ?: return@withContext false
+            if (!caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
                 Log.d("VanSync", "no INTERNET capability"); return@withContext false
             }
-
+            if (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) {
+                Log.d("VanSync", "VALIDATED → online"); return@withContext true
+            }
             val url = URL("http://clients3.google.com/generate_204")
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "GET"
-            conn.connectTimeout = 3000
-            conn.readTimeout = 3000
+            conn.connectTimeout = 2500
+            conn.readTimeout = 2500
             conn.useCaches = false
             conn.instanceFollowRedirects = false
             val code = conn.responseCode
-            val len = conn.contentLength
             conn.disconnect()
-            val ok = code == 204 && len <= 0
-            Log.d("VanSync", "probe code=$code len=$len ok=$ok")
-            ok
+            Log.d("VanSync", "probe code=$code")
+            code == 204
         } catch (e: Exception) {
-            Log.d("VanSync", "probe failed: ${e.message}")
-            false
+            // probe ล้มเหลว (carrier block / firewall) → เชื่อ capability flag แทน
+            Log.d("VanSync", "probe failed: ${e.message} — fallback to capability check")
+            hasNetwork(context)
         }
     }
 }
@@ -196,14 +210,19 @@ suspend fun downloadCustomersFromCloud(context: Context): Boolean {
                     val building = obj.optString("building", "")
                     val road = obj.optString("road", "")
                     val subDistrict = obj.optString("sub_district", "")
+                    val district = obj.optString("district", "") // ดึงเขตมาด้วย
                     val province = obj.optString("province", "")
                     val zipCode = obj.optString("zip_code", "")
                     val printDelivery = obj.optBoolean("print_delivery", true)
                     val printTax = obj.optBoolean("print_tax", false)
-                    val part1 = listOf(addressNo, building).filter { it.isNotBlank() }.joinToString(" ")
-                    val part2 = listOf(road, subDistrict).filter { it.isNotBlank() }.joinToString(" ")
-                    val part3 = listOf(province, zipCode).filter { it.isNotBlank() }.joinToString(" ")
-                    val finalAddress = listOf(part1, part2, part3).filter { it.isNotBlank() }.joinToString("\n")
+
+                    // ใส่คำนำหน้า แขวง/เขต และเว้นวรรคให้ห่างสวยงาม
+                    val cleanSubDist = if (subDistrict.isNotEmpty() && !subDistrict.contains("แขวง") && !subDistrict.contains("ตำบล")) "แขวง$subDistrict" else subDistrict
+                    val cleanDist = if (district.isNotEmpty() && !district.contains("เขต") && !district.contains("อำเภอ")) "เขต$district" else district
+                    
+                    val finalAddress = listOf(addressNo, building, road, cleanSubDist, cleanDist, province, zipCode)
+                        .filter { it.isNotBlank() }
+                        .joinToString("   ") // เว้น 3 เคาะตามที่ต้องการ
 
                     val existing = db.customerDao().getCustomerByBranch(storeName, branchCode)
                     if (existing != null) {
@@ -222,7 +241,8 @@ suspend fun uploadToGoogleSheet(
     deliveryNo: String, taxNo: String, date: String,
     store: String, branch: String, taxId: String,
     total: Double, empId: String,
-    itemsJson: JSONArray, itemsText: String
+    itemsJson: JSONArray, itemsText: String,
+    poNumber: String = "", cvCode: String = ""
 ): Boolean {
     return try {
         val url = URL(SCRIPT_URL)
@@ -233,16 +253,18 @@ suspend fun uploadToGoogleSheet(
         conn.connectTimeout = 5000
         conn.readTimeout = 10000
         val jsonObject = JSONObject().apply {
-            put("deliveryNo", deliveryNo)
-            put("taxNo", taxNo)
-            put("date", date)
-            put("storeName", store)
-            put("branch", branch)
-            put("taxId", taxId)
+            put("deliveryNo", deliveryNo ?: "-")
+            put("taxNo", taxNo ?: "-")
+            put("date", date ?: "")
+            put("storeName", store ?: "")
+            put("branch", branch ?: "")
+            put("cvCode", cvCode ?: "")
+            put("poNumber", poNumber ?: "")
+            put("taxId", taxId ?: "")
             put("total", total.toString())
-            put("empId", empId)
-            put("items", itemsJson)       // array — [{name, qty, price, subtotal}, ...]
-            put("itemsText", itemsText)   // สำรอง — string พร้อมเขียนลง cell เดียว
+            put("empId", empId ?: "")
+            put("items", itemsJson ?: JSONArray())
+            put("itemsText", itemsText ?: "")
         }
         val jsonInputString = jsonObject.toString()
         conn.outputStream.use { os ->
@@ -261,8 +283,8 @@ suspend fun uploadToGoogleSheet(
 }
 
 suspend fun syncPendingCloudOrders(context: Context, driverId: String, routeId: String) {
-    // ออฟไลน์หรือติด Captive Portal → เงียบออกไป ไม่รบกวน UI
-    if (!hasRealInternet(context)) { Log.d("VanSync", "skip: no real internet"); return }
+    // ไม่มีเน็ตเลย → skip. Captive portal ให้ POST เป็นคนตัดสิน (timeout/failed → retry รอบหน้า)
+    if (!hasNetwork(context)) { Log.d("VanSync", "skip: no network"); return }
 
     syncMutex.withLock {
         withContext(Dispatchers.IO) {
@@ -309,7 +331,8 @@ suspend fun syncPendingCloudOrders(context: Context, driverId: String, routeId: 
                     deliveryNo, taxNo, dateStr,
                     customer.store_name, customer.branch_code, customer.tax_id,
                     order.total_amount, driverId,
-                    itemsJson, itemsTextBuilder.toString()
+                    itemsJson, itemsTextBuilder.toString(),
+                    order.po_number, order.cv_code
                 )
                 if (isSuccess) {
                     db.orderDao().markOrderAsSynced(order.id)
@@ -802,14 +825,43 @@ fun BillingScreen(
     val myCompanyAddress = "291,291/1 ถนนเจริญพัฒนา แขวงบางชัน เขตคลองสามวา กรุงเทพมหานคร 10510"
     val myCompanyTaxId = "0105546047517"
 
-    // Auto-sync watcher: พอ hasRealInternet เป็น true เมื่อไหร่ รอบถัดไปอัปทันที
-    LaunchedEffect(Unit) {
-        while (true) {
-            try {
-                syncPendingCloudOrders(context, driverId, routeId)
-            } catch (_: Exception) {
+    // Auto-sync watcher: รันทุก 10 วินาที + ยิงทันทีเมื่อเน็ตกลับมา (ผ่าน NetworkCallback)
+    LaunchedEffect(driverId, routeId) {
+        if (driverId.isEmpty()) return@LaunchedEffect
+
+        // 1) รอบตามเวลา — กันลืมในกรณี NetworkCallback ไม่ trigger
+        val tickerJob = launch {
+            while (true) {
+                try { syncPendingCloudOrders(context, driverId, routeId) } catch (_: Exception) {}
+                delay(10_000L)
             }
-            delay(15_000L)
+        }
+
+        // 2) ฟังการเปลี่ยนแปลงของเครือข่าย — เน็ตกลับมาปุ๊บ sync ปั๊บ
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val request = android.net.NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: android.net.Network) {
+                Log.d("VanSync", "network onAvailable → trigger sync")
+                launch {
+                    try { syncPendingCloudOrders(context, driverId, routeId) } catch (_: Exception) {}
+                }
+            }
+            override fun onCapabilitiesChanged(network: android.net.Network, caps: NetworkCapabilities) {
+                if (caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                    launch {
+                        try { syncPendingCloudOrders(context, driverId, routeId) } catch (_: Exception) {}
+                    }
+                }
+            }
+        }
+        try { cm.registerNetworkCallback(request, callback) } catch (_: Exception) {}
+
+        try { awaitCancellation() } finally {
+            tickerJob.cancel()
+            try { cm.unregisterNetworkCallback(callback) } catch (_: Exception) {}
         }
     }
 
@@ -1019,7 +1071,15 @@ fun BillingScreen(
                     scope.launch {
                         try {
                             val custId = db.customerDao().insert(Customer(store_name = selectedGroup!!, branch_code = branchInput, tax_id = currentTaxId, address = currentAddress, print_delivery = printDelivery, print_tax = printTax))
-                            val orderId = db.orderDao().insert(Order(customer_id = custId, total_amount = totalAmountState.doubleValue, timestamp = System.currentTimeMillis()))
+                            val orderId = db.orderDao().insert(
+                                Order(
+                                    customer_id = custId,
+                                    total_amount = totalAmountState.doubleValue,
+                                    timestamp = System.currentTimeMillis(),
+                                    po_number = poNumber,
+                                    cv_code = cvCode
+                                )
+                            )
                             val items = quantities.filter { it.value > 0 }.map { (pId, qty) -> OrderItem(order_id = orderId, product_id = pId, quantity = qty, subtotal = (products.find { it.id == pId }?.price ?: 0.0) * qty) }
                             db.orderItemDao().insertAll(items)
 
@@ -1030,8 +1090,8 @@ fun BillingScreen(
                             currentCustomerCache = Customer(store_name = selectedGroup!!, branch_code = branchInput, tax_id = currentTaxId, address = currentAddress)
 
                             val q = mutableListOf<String>()
-                            if (printDelivery) { q.add("ใบส่งของ\nDELIVERY NOTE"); q.add("ใบส่งของ\nDELIVERY NOTE (สำเนาร้านค้า)") }
-                            if (printTax) { q.add("ใบกำกับภาษี/ใบเสร็จรับเงิน\nTAX INVOICE/RECEIPT"); q.add("ใบกำกับภาษี/ใบเสร็จรับเงิน\nTAX INVOICE/RECEIPT (สำเนาร้านค้า)") }
+                            if (printDelivery) { q.add("ใบส่งของ\nDELIVERY ORDER"); q.add("ใบส่งของ\nDELIVERY ORDER") }
+                            if (printTax) { q.add("ใบกำกับภาษี/ใบเสร็จรับเงิน\nTAX INVOICE/RECEIPT"); q.add("ใบกำกับภาษี/ใบเสร็จรับเงิน\nTAX INVOICE/RECEIPT") }
 
                             printQueue = q
                             currentPrintIndex = 0

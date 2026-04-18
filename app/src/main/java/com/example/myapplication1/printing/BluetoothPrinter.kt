@@ -112,7 +112,7 @@ object DBluetoothPrinter {
         poNumber: String, cvCode: String
     ): Bitmap {
         val width = 576 // กว้างมาตรฐาน 80mm
-        val marginX = 40f // 🌟 ขอบปลอดภัย ป้องกันข้อความโดนตัดซ้ายขวา
+        val marginX = 20f // ขอบปลอดภัย (แคบลงเพื่อใช้เนื้อที่กระดาษเต็ม แต่ไม่ชิดจนเกินไป)
         val printWidth = width - (marginX * 2) // พื้นที่เขียนตัวหนังสือจริงๆ
 
         val tempHeight = 3000
@@ -133,18 +133,19 @@ object DBluetoothPrinter {
             textSize = 26f
         }
 
-        // ฟังก์ชันวาดข้อความจัดกลาง (ตัดคำอัตโนมัติ)
+        // ฟังก์ชันวาดข้อความจัดกลาง (ตัดคำอัตโนมัติ - ปรับปรุงการตัดคำ)
         fun drawCenterWrap(text: String, p: Paint) {
             val textPaint = TextPaint(p)
+            // ใช้ความกว้างเต็มพื้นที่ ลดการตัดคำที่ยังไม่จำเป็น
             val layout = StaticLayout(text, textPaint, printWidth.toInt(), Layout.Alignment.ALIGN_CENTER, 1.0f, 0.0f, false)
             canvas.save()
             canvas.translate(marginX, y)
             layout.draw(canvas)
             canvas.restore()
-            y += layout.height + 6f
+            y += layout.height + 4f
         }
 
-        // ฟังก์ชันวาดข้อความชิดซ้าย (ตัดคำอัตโนมัติ)
+        // ฟังก์ชันวาดข้อความชิดซ้าย (ตัดคำอัตโนมัติ - ปรับปรุงการตัดคำ)
         fun drawLeftWrap(text: String, p: Paint) {
             val textPaint = TextPaint(p)
             val layout = StaticLayout(text, textPaint, printWidth.toInt(), Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false)
@@ -152,7 +153,7 @@ object DBluetoothPrinter {
             canvas.translate(marginX, y)
             layout.draw(canvas)
             canvas.restore()
-            y += layout.height + 6f
+            y += layout.height + 4f
         }
 
         // ฟังก์ชันวาดบรรทัดที่มี ซ้าย-ขวา
@@ -187,21 +188,24 @@ object DBluetoothPrinter {
             y += 16f
         }
 
-        // ฟังก์ชันวาดตารางสินค้า
-        fun drawItem(name: String, qty: String, price: String, p: Paint) {
+        // ฟังก์ชันวาดตารางสินค้า (3 คอลัมน์: จำนวน / หน่วยละ / จำนวนเงิน)
+        fun drawItem(name: String, qty: String, unit: String, price: String, p: Paint) {
             val qtyWidth = p.measureText(qty)
+            val unitWidth = p.measureText(unit)
             val priceWidth = p.measureText(price)
 
             val priceX = width - marginX - priceWidth
-            val qtyX = width - marginX - 140f - qtyWidth // ล็อคตำแหน่งช่องจำนวน
+            val unitX = width - marginX - 120f - unitWidth   // ช่องหน่วยละ
+            val qtyX = width - marginX - 240f - qtyWidth     // ช่องจำนวน
 
-            val maxNameWidth = printWidth - 160f
+            val maxNameWidth = printWidth - 260f
 
             val textPaint = TextPaint(p)
             val layout = StaticLayout(name, textPaint, maxNameWidth.toInt(), Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false)
 
             val baseline = y + layout.getLineBaseline(0)
             canvas.drawText(qty, qtyX, baseline, p)
+            canvas.drawText(unit, unitX, baseline, p)
             canvas.drawText(price, priceX, baseline, p)
 
             canvas.save()
@@ -216,9 +220,10 @@ object DBluetoothPrinter {
         docTitle.split("\n").forEach { drawCenterWrap(it, boldPaint) }
         y += 10f
         drawCenterWrap("บริษัท ตั้งเจริญมีนบุรี จำกัด", boldPaint)
-        drawCenterWrap("291,291/1 ถนนเจริญพัฒนา แขวงบางชัน เขตคลองสามวา", paint)
-        drawCenterWrap("กรุงเทพมหานคร 10510", paint)
-        drawCenterWrap("เลขประจำตัวผู้เสียภาษี 0105546047517 (สำนักงานใหญ่)", paint)
+        drawCenterWrap("291,291/1 ถนนเจริญพัฒนา แขวงบางชัน", paint)
+        drawCenterWrap("เขตคลองสามวา กรุงเทพฯ 10510", paint)
+        val hqLine = if (docTitle.contains("ใบกำกับภาษี")) "เลขผู้เสียภาษี 0105546047517 (สำนักงานใหญ่)" else "(สำนักงานใหญ่)"
+        drawCenterWrap(hqLine, paint)
         drawLine()
 
         // --- ข้อมูลบิล ---
@@ -233,17 +238,28 @@ object DBluetoothPrinter {
         drawLeftWrap("ลูกค้า: $storeName", boldPaint)
 
         if (!customer.address.isNullOrEmpty()) {
-            drawLeftWrap("ที่อยู่: ${customer.address.replace("\n", " ")}", paint)
+            var addr = customer.address.replace("\n", " ").replace("(สำนักงานใหญ่)", "").trim()
+            // ถ้าเป็นบริษัทมหาชน ให้ใส่ (สำนักงานใหญ่) กลับเข้าไปตามเงื่อนไขใหม่
+            if (storeName.contains("มหาชน")) {
+                addr = "$addr (สำนักงานใหญ่)"
+            }
+            drawLeftWrap("ที่อยู่: $addr", paint)
         }
-        if (!customer.tax_id.isNullOrEmpty()) {
-            drawLeftWrap("เลขผู้เสียภาษี: ${customer.tax_id}", paint)
+        // แสดงเลขประจำตัวผู้เสียภาษีลูกค้าเฉพาะใบกำกับภาษี — ใบส่งของไม่ต้องมี
+        if (!customer.tax_id.isNullOrEmpty() && docTitle.contains("ใบกำกับภาษี")) {
+            drawLeftWrap("เลขประจำตัวผู้เสียภาษี: ${customer.tax_id}", paint)
         }
 
         val branch = if (!customer.branch_code.isNullOrEmpty()) customer.branch_code else "-"
-        drawLeftWrap("สาขา: $branch", paint)
+        val rightParts = mutableListOf<String>()
+        if (cvCode.isNotEmpty()) rightParts.add("CV.CODE: $cvCode")
+        if (poNumber.isNotEmpty()) rightParts.add("P.O: $poNumber")
 
-        if (cvCode.isNotEmpty()) drawLeftWrap("CV.CODE: $cvCode", boldPaint)
-        if (poNumber.isNotEmpty()) drawLeftWrap("เลขที่ PO: $poNumber", boldPaint)
+        if (rightParts.isNotEmpty()) {
+            drawRow("สาขา: $branch", rightParts.joinToString("  "), paint)
+        } else {
+            drawLeftWrap("สาขา: $branch", paint)
+        }
 
         drawLine()
 
@@ -252,8 +268,10 @@ object DBluetoothPrinter {
         canvas.drawText("รายการ", marginX, headerY, boldPaint)
 
         val qtyHeader = "จำนวน"
+        val unitHeader = "หน่วยละ"
         val priceHeader = "จำนวนเงิน"
-        canvas.drawText(qtyHeader, width - marginX - 140f - boldPaint.measureText(qtyHeader), headerY, boldPaint)
+        canvas.drawText(qtyHeader, width - marginX - 240f - boldPaint.measureText(qtyHeader), headerY, boldPaint)
+        canvas.drawText(unitHeader, width - marginX - 120f - boldPaint.measureText(unitHeader), headerY, boldPaint)
         canvas.drawText(priceHeader, width - marginX - boldPaint.measureText(priceHeader), headerY, boldPaint)
         y += boldPaint.textSize + 12f
         drawLine()
@@ -266,34 +284,40 @@ object DBluetoothPrinter {
                 val subtotal = product.price * qty
                 total += subtotal
                 val cleanName = product.name.replace("\n", " ").replace("\r", "")
-                drawItem(cleanName, String.format("%,d", qty), String.format("%,.2f", subtotal), paint)
+                drawItem(
+                    cleanName,
+                    String.format("%,d", qty),
+                    String.format("%,.2f", product.price),
+                    String.format("%,.2f", subtotal),
+                    paint
+                )
             }
         }
         drawLine()
 
         // --- สรุปยอด ---
         val netTotal = total
-        val vat = netTotal * 7 / 107
-        val totalBeforeVat = netTotal - vat
+        val isTaxInvoice = docTitle.contains("ใบกำกับภาษี")
 
-        drawRow("รวมเงิน", String.format("%,.2f", totalBeforeVat), paint)
-        drawRow("ภาษีมูลค่าเพิ่ม", String.format("%,.2f", vat), paint)
+        if (isTaxInvoice) {
+            val vat = netTotal * 7 / 107
+            val totalBeforeVat = netTotal - vat
+            drawRow("รวมเงิน", String.format("%,.2f", totalBeforeVat), paint)
+            drawRow("ภาษีมูลค่าเพิ่ม", String.format("%,.2f", vat), paint)
+        }
         drawRow("ยอดเงินสุทธิ", String.format("%,.2f", netTotal), boldPaint)
         drawLine()
 
-        // --- ช่องลายเซ็น (เว้นพื้นที่ประทับตรา) ---
-        y += 250f // เว้นที่กว้างๆ สำหรับปั๊มตราบริษัท
+        // --- ผู้ส่งของ (อยู่ใต้เส้น ------ ของยอดเงินสุทธิทันที) ---
+        val senderText = "ผู้ส่งของ ($driverId) ...................."
+        y += paint.textSize
+        canvas.drawText(senderText, marginX, y, paint)
+        y += 20f
 
-        // 1. วาดบรรทัดผู้รับของ (ชิดซ้าย)
+        // --- เว้นพื้นที่ประทับตรา / ผู้รับของ ---
+        y += 220f
         val signText1 = "ผู้รับของ ...................."
         canvas.drawText(signText1, marginX, y, paint)
-
-        // 2. เว้นระยะห่างลงมาบรรทัดใหม่ (ปรับตัวเลข 150f ได้ตามต้องการ)
-        y += 150f
-
-        // 3. วาดบรรทัดผู้ส่งของ (ชิดขวา)
-        val signText2 = "ผู้ส่งของ ...................."
-        canvas.drawText(signText2, width - marginX - paint.measureText(signText2), y, paint)
 
         y += 80f
 

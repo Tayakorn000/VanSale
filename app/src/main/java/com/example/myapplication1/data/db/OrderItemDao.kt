@@ -8,6 +8,15 @@ interface OrderItemDao {
     @JvmSuppressWildcards
     suspend fun insertAll(orderItems: List<OrderItem>): List<Long>
 
+    @Update
+    suspend fun update(item: OrderItem): Int
+
+    @Delete
+    suspend fun delete(item: OrderItem): Int
+
+    @Query("DELETE FROM order_items WHERE order_id = :orderId")
+    suspend fun deleteByOrderId(orderId: Long): Int
+
     @Query("SELECT * FROM order_items")
     @JvmSuppressWildcards
     suspend fun getAllOrderItemsSync(): List<OrderItem>

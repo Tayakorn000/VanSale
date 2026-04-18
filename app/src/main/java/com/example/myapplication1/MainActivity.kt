@@ -526,8 +526,8 @@ class MainActivity1 : ComponentActivity() {
                                 onNavigateToAdmin = { currentScreen = AppScreen.ADMIN },
                                 onNavigateToHistory = { currentScreen = AppScreen.HISTORY }
                             )
-                            AppScreen.ADMIN -> AdminScreen(onBack = { currentScreen = AppScreen.BILLING })
-                            AppScreen.HISTORY -> HistoryScreen(driverId = driverId, routeId = routeId, onBack = { currentScreen = AppScreen.BILLING })
+                            AppScreen.ADMIN -> AdminScreen(driverId = driverId, routeId = routeId, userRole = userRole, onBack = { currentScreen = AppScreen.BILLING })
+                            AppScreen.HISTORY -> HistoryScreen(driverId = driverId, driverName = driverName, routeId = routeId, userRole = userRole, onBack = { currentScreen = AppScreen.BILLING })
                         }
                     }
                 }
@@ -638,16 +638,28 @@ fun LoginScreen(onLoginSuccess: (String, String, String, String) -> Unit) {
                         }
                     }
 
-                    if (selectedRouteName.isNotBlank()) {
+                    if (routeId.isNotBlank()) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Text("สายนี้คือ", fontSize = 12.sp, color = Color.Gray)
-                                Text(selectedRouteName, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.primary)
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.LocalShipping, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.width(10.dp))
+                                Column {
+                                    Text("เส้นทางที่เลือก", fontSize = 11.sp, color = Color.Gray)
+                                    Text(
+                                        if (selectedRouteName.isNotBlank()) "สาย $routeId — $selectedRouteName" else "สาย $routeId",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
                         }
                     }
@@ -662,38 +674,211 @@ fun LoginScreen(onLoginSuccess: (String, String, String, String) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HistoryScreen(driverId: String, routeId: String, onBack: () -> Unit) {
+fun HistoryScreen(driverId: String, driverName: String, routeId: String, userRole: String, onBack: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val db = remember { AppDatabase.getDatabase(context) }
+    val isAdmin = userRole == "ADMIN" || driverId == "9999"
+
     var orders by remember { mutableStateOf<List<Order>>(emptyList()) }
     var customers by remember { mutableStateOf<List<Customer>>(emptyList()) }
+    var products by remember { mutableStateOf<List<Product>>(emptyList()) }
+    var allItems by remember { mutableStateOf<List<OrderItem>>(emptyList()) }
 
-    LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) {
+    // admin edit state
+    var editingOrder by remember { mutableStateOf<Order?>(null) }
+    var editQty by remember { mutableStateOf<Map<Long, String>>(emptyMap()) }
+
+    // reprint state
+    var reprintOrder by remember { mutableStateOf<Order?>(null) }
+    var reprintIndex by remember { mutableIntStateOf(0) }
+    var reprintQueue by remember { mutableStateOf<List<String>>(emptyList()) }
+    var isPrinting by remember { mutableStateOf(false) }
+
+    fun reload() {
+        scope.launch(Dispatchers.IO) {
             orders = db.orderDao().getAllOrdersSync().sortedByDescending { it.timestamp }
             customers = db.customerDao().getAllCustomersSync()
+            products = db.productDao().getAllProducts().first()
+            allItems = db.orderItemDao().getAllOrderItemsSync()
         }
     }
+    LaunchedEffect(Unit) { reload() }
 
     val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
     val offset = prefs.getLong("invoice_offset", 0L)
 
-    Scaffold(topBar = { CenterAlignedTopAppBar(title = { Text("ประวัติบิล", fontWeight = FontWeight.Bold) }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back") } }) }) { padding ->
+    // --- Admin Edit Dialog ---
+    editingOrder?.let { order ->
+        val customer = customers.find { it.id == order.customer_id }
+        val orderItems = allItems.filter { it.order_id == order.id }
+        AlertDialog(
+            onDismissRequest = { editingOrder = null },
+            title = { Text("แก้ไขบิล #${order.id + offset}", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text("ร้าน: ${customer?.store_name ?: "-"}", fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(12.dp))
+                    orderItems.forEach { item ->
+                        val product = products.find { it.id == item.product_id }
+                        val key = item.product_id
+                        val currentQty = editQty[key] ?: item.quantity.toString()
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
+                            Column(Modifier.weight(1f)) {
+                                Text(product?.name ?: "สินค้า#${item.product_id}", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                Text("฿${product?.price ?: 0.0}/หน่วย", fontSize = 12.sp, color = Color.Gray)
+                            }
+                            OutlinedTextField(
+                                value = currentQty,
+                                onValueChange = { v -> editQty = editQty + (key to v.filter { c -> c.isDigit() }) },
+                                label = { Text("จำนวน") },
+                                singleLine = true,
+                                modifier = Modifier.width(90.dp),
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    scope.launch(Dispatchers.IO) {
+                        val updatedItems = orderItems.map { item ->
+                            val newQty = editQty[item.product_id]?.toIntOrNull() ?: item.quantity
+                            val price = products.find { it.id == item.product_id }?.price ?: 0.0
+                            item.copy(quantity = newQty, subtotal = price * newQty)
+                        }.filter { it.quantity > 0 }
+                        db.orderItemDao().deleteByOrderId(order.id)
+                        if (updatedItems.isNotEmpty()) db.orderItemDao().insertAll(updatedItems)
+                        val newTotal = updatedItems.sumOf { it.subtotal }
+                        db.orderDao().updateTotalAndUnSync(order.id, newTotal)
+                        withContext(Dispatchers.Main) {
+                            editingOrder = null
+                            editQty = emptyMap()
+                            Toast.makeText(context, "บันทึกแล้ว — รอซิงค์ใหม่", Toast.LENGTH_SHORT).show()
+                            reload()
+                        }
+                    }
+                }) { Text("บันทึก") }
+            },
+            dismissButton = { OutlinedButton(onClick = { editingOrder = null; editQty = emptyMap() }) { Text("ยกเลิก") } }
+        )
+    }
+
+    // --- Reprint Queue Dialog ---
+    reprintOrder?.let { order ->
+        val customer = customers.find { it.id == order.customer_id }
+        if (reprintQueue.isNotEmpty() && reprintIndex < reprintQueue.size && customer != null) {
+            val docTitle = reprintQueue[reprintIndex]
+            val orderItems = allItems.filter { it.order_id == order.id }
+            val qtyMap = orderItems.associate { it.product_id to it.quantity }
+            AlertDialog(
+                onDismissRequest = { reprintOrder = null; reprintIndex = 0; reprintQueue = emptyList() },
+                title = { Text("ปริ้นซ้ำ ${reprintIndex + 1}/${reprintQueue.size}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) },
+                text = { Text("เตรียมพิมพ์:\n$docTitle\n\n📌 ฉีกกระดาษใบเดิมออกก่อน แล้วกดพิมพ์", fontSize = 16.sp) },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            isPrinting = true
+                            scope.launch {
+                                val ok = DBluetoothPrinter.printSingleReceipt(
+                                    context = context,
+                                    customer = customer,
+                                    quantities = qtyMap,
+                                    products = products,
+                                    driverId = driverId,
+                                    docTitle = docTitle,
+                                    orderId = order.id + offset,
+                                    routeId = routeId,
+                                    poNumber = order.po_number,
+                                    cvCode = order.cv_code
+                                )
+                                isPrinting = false
+                                if (ok) {
+                                    reprintIndex++
+                                    if (reprintIndex >= reprintQueue.size) {
+                                        reprintOrder = null; reprintIndex = 0; reprintQueue = emptyList()
+                                        Toast.makeText(context, "ปริ้นซ้ำสำเร็จ", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = if (isPrinting) Color.Gray else MaterialTheme.colorScheme.primary)
+                    ) {
+                        if (isPrinting) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
+                        else Text("พิมพ์ใบนี้เลย", fontSize = 16.sp)
+                    }
+                }
+            )
+        }
+    }
+
+    Scaffold(topBar = {
+        CenterAlignedTopAppBar(
+            title = { Text("ประวัติบิล", fontWeight = FontWeight.Bold) },
+            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back") } }
+        )
+    }) { padding ->
         LazyColumn(modifier = Modifier.padding(padding).fillMaxSize().padding(16.dp)) {
             items(orders) { order ->
                 val customer = customers.find { it.id == order.customer_id }
                 val dateStr = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(order.timestamp))
                 val prefix = if (customer?.print_tax == true) "V" else ""
-
                 val actualInvoiceNo = order.id + offset
                 val invoiceNo = String.format("%s%s%07d", prefix, routeId, actualInvoiceNo)
+                val orderItems = allItems.filter { it.order_id == order.id }
 
                 Card(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
-                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(invoiceNo, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                            Text(customer?.store_name ?: "-", fontWeight = FontWeight.Medium)
-                            Text(dateStr, fontSize = 12.sp, color = Color.Gray)
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(invoiceNo, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Text(customer?.store_name ?: "-", fontWeight = FontWeight.Medium)
+                                Text(dateStr, fontSize = 12.sp, color = Color.Gray)
+                                Text("฿${"%.2f".format(order.total_amount)}", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                if (!order.is_synced) Text("⏳ รอซิงค์", fontSize = 11.sp, color = Color(0xFFE65100))
+                            }
+                        }
+                        if (orderItems.isNotEmpty()) {
+                            Spacer(Modifier.height(6.dp))
+                            orderItems.forEach { item ->
+                                val pName = products.find { it.id == item.product_id }?.name ?: "สินค้า#${item.product_id}"
+                                Text("• $pName × ${item.quantity} = ฿${"%.0f".format(item.subtotal)}", fontSize = 12.sp, color = Color.Gray)
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // ปุ่มปริ้นซ้ำ — ทุกคนใช้ได้
+                            OutlinedButton(
+                                onClick = {
+                                    val q = mutableListOf<String>()
+                                    if (customer?.print_delivery == true) { q.add("ใบส่งของ\nDELIVERY NOTE"); q.add("ใบส่งของ\nDELIVERY NOTE (สำเนาร้านค้า)") }
+                                    if (customer?.print_tax == true) { q.add("ใบกำกับภาษี/ใบเสร็จรับเงิน\nTAX INVOICE/RECEIPT"); q.add("ใบกำกับภาษี/ใบเสร็จรับเงิน\nTAX INVOICE/RECEIPT (สำเนาร้านค้า)") }
+                                    if (q.isEmpty()) q.add("ใบส่งของ\nDELIVERY NOTE")
+                                    reprintOrder = order; reprintQueue = q; reprintIndex = 0
+                                },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(Icons.Default.Print, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("ปริ้นซ้ำ", fontSize = 13.sp)
+                            }
+                            // ปุ่มแก้ไข — เฉพาะ Admin
+                            if (isAdmin) {
+                                Button(
+                                    onClick = {
+                                        editQty = allItems.filter { it.order_id == order.id }.associate { it.product_id to it.quantity.toString() }
+                                        editingOrder = order
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                                ) {
+                                    Icon(Icons.Default.Edit, null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("แก้ไข", fontSize = 13.sp)
+                                }
+                            }
                         }
                     }
                 }
@@ -704,7 +889,7 @@ fun HistoryScreen(driverId: String, routeId: String, onBack: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AdminScreen(onBack: () -> Unit) {
+fun AdminScreen(driverId: String, routeId: String, userRole: String, onBack: () -> Unit) {
     val context = LocalContext.current
     val db = remember { AppDatabase.getDatabase(context) }
     val coroutineScope = rememberCoroutineScope()
@@ -1170,14 +1355,15 @@ fun BillingScreen(
                     Spacer(modifier = Modifier.height(6.dp))
                     DashedDivider()
 
-                    // พื้นที่ตราประทับ (ใบจริงเว้น ~250px)
+                    // ผู้ส่งของ ชิดซ้าย (ตรงใต้เส้นยอดเงินสุทธิ — ตรงกับใบพิมพ์จริง)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("ผู้ส่งของ ($driverId) ....................", fontSize = 12.sp, modifier = Modifier.align(Alignment.Start))
+
+                    // พื้นที่ตราประทับ
                     Spacer(modifier = Modifier.height(80.dp))
 
-                    // ผู้รับของ ชิดซ้าย
+                    // ผู้รับของ ชิดซ้าย (หลังช่องตรา)
                     Text("ผู้รับของ ....................", fontSize = 12.sp, modifier = Modifier.align(Alignment.Start))
-                    Spacer(modifier = Modifier.height(48.dp))
-                    // ผู้ส่งของ ชิดขวา
-                    Text("ผู้ส่งของ ....................", fontSize = 12.sp, modifier = Modifier.align(Alignment.End))
 
                     Spacer(modifier = Modifier.height(12.dp))
                     val docs = mutableListOf<String>()

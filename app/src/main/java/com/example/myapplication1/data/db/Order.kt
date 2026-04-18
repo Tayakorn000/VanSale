@@ -10,6 +10,6 @@ data class Order(
     val total_amount: Double,
     val timestamp: Long,
     val is_synced: Boolean = false,
-    val po_number: String = "",
-    val cv_code: String = ""
+    val cv_code: String = "",
+    val po_number: String = ""
 )

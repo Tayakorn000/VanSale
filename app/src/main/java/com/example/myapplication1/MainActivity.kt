@@ -89,6 +89,27 @@ enum class AppScreen { BILLING, ADMIN, HISTORY }
 
 data class PrintData(val customer: Customer, val quantities: Map<Long, Int>, val orderId: Long, val poNumber: String, val cvCode: String)
 
+data class RouteInfo(val id: String, val name: String) {
+    val display: String get() = if (name.isNotBlank() && name != id) "$id — $name" else id
+}
+
+fun parseRoutes(json: String?): List<RouteInfo> {
+    return try {
+        val arr = JSONArray(json ?: "[]")
+        List(arr.length()) { i ->
+            when (val v = arr.get(i)) {
+                is JSONObject -> RouteInfo(v.optString("id", v.optString("route_id", "")), v.optString("name", v.optString("description", "")))
+                else -> RouteInfo(v.toString(), "")
+            }
+        }.filter { it.id.isNotBlank() }
+    } catch (e: Exception) { emptyList() }
+}
+
+fun lookupRouteName(context: Context, routeId: String): String {
+    val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+    return parseRoutes(prefs.getString("routes_list", "[]")).find { it.id == routeId }?.name ?: ""
+}
+
 // Mutex กันอัปโหลดชนกันระหว่าง auto-sync กับปุ่มปริ้น
 val syncMutex = Mutex()
 
@@ -239,10 +260,12 @@ suspend fun downloadCustomersFromCloud(context: Context): Boolean {
 
 suspend fun uploadToGoogleSheet(
     deliveryNo: String, taxNo: String, date: String,
-    store: String, branch: String, taxId: String,
-    total: Double, empId: String,
+    store: String, branch: String,
+    cvCode: String, poNumber: String,
+    taxId: String,
     itemsJson: JSONArray, itemsText: String,
-    poNumber: String = "", cvCode: String = ""
+    total: Double, empId: String,
+    driverName: String = "", routeId: String = ""
 ): Boolean {
     return try {
         val url = URL(SCRIPT_URL)
@@ -252,19 +275,23 @@ suspend fun uploadToGoogleSheet(
         conn.doOutput = true
         conn.connectTimeout = 5000
         conn.readTimeout = 10000
+        // เรียงตามคอลัมน์ในชีท (A→K):
+        // เลขที่ใบส่งของ | เลขใบกำกับภาษี | วันที่ | ชื่อลูกค้า | สาขา | CV.CODE | เลขที่ P.O | เลขผู้เสียภาษี | รายการสินค้า | ยอดรวม | รหัสพนักงาน
         val jsonObject = JSONObject().apply {
-            put("deliveryNo", deliveryNo ?: "-")
-            put("taxNo", taxNo ?: "-")
-            put("date", date ?: "")
-            put("storeName", store ?: "")
-            put("branch", branch ?: "")
-            put("cvCode", cvCode ?: "")
-            put("poNumber", poNumber ?: "")
-            put("taxId", taxId ?: "")
-            put("total", total.toString())
-            put("empId", empId ?: "")
-            put("items", itemsJson ?: JSONArray())
-            put("itemsText", itemsText ?: "")
+            put("deliveryNo", deliveryNo ?: "-")   // A
+            put("taxNo", taxNo ?: "-")             // B
+            put("date", date ?: "")               // C
+            put("storeName", store ?: "")          // D
+            put("branch", branch ?: "")            // E
+            put("cvCode", cvCode ?: "")            // F
+            put("poNumber", poNumber ?: "")        // G
+            put("taxId", taxId ?: "")              // H
+            put("itemsText", itemsText ?: "")      // I
+            put("total", total.toString())         // J
+            put("empId", empId ?: "")              // K
+            put("items", itemsJson)                // สำรอง array
+            put("driverName", driverName)
+            put("routeId", routeId)
         }
         val jsonInputString = jsonObject.toString()
         conn.outputStream.use { os ->
@@ -296,6 +323,8 @@ suspend fun syncPendingCloudOrders(context: Context, driverId: String, routeId: 
             val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
             // อ่าน offset ใน Mutex — ให้เลขบิลที่อัปตรงกับที่ปริ้น
             val offset = prefs.getLong("invoice_offset", 0L)
+
+            val driverName = db.employeeDao().getEmployeeById(driverId)?.name ?: ""
 
             val allCustomers = db.customerDao().getAllCustomersSync()
             val allProducts = db.productDao().getAllProducts().first()
@@ -329,10 +358,12 @@ suspend fun syncPendingCloudOrders(context: Context, driverId: String, routeId: 
 
                 val isSuccess = uploadToGoogleSheet(
                     deliveryNo, taxNo, dateStr,
-                    customer.store_name, customer.branch_code, customer.tax_id,
-                    order.total_amount, driverId,
+                    customer.store_name, customer.branch_code,
+                    order.cv_code, order.po_number,
+                    customer.tax_id,
                     itemsJson, itemsTextBuilder.toString(),
-                    order.po_number, order.cv_code
+                    order.total_amount, driverId,
+                    driverName, routeId
                 )
                 if (isSuccess) {
                     db.orderDao().markOrderAsSynced(order.id)
@@ -476,6 +507,7 @@ class MainActivity1 : ComponentActivity() {
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceVariant) {
                     var isLoggedIn by remember { mutableStateOf(false) }
                     var driverId by remember { mutableStateOf("") }
+                    var driverName by remember { mutableStateOf("") }
                     var userRole by remember { mutableStateOf("") }
                     var routeId by remember { mutableStateOf("") }
                     var currentScreen by remember { mutableStateOf(AppScreen.BILLING) }
@@ -484,13 +516,13 @@ class MainActivity1 : ComponentActivity() {
                     BackHandler(enabled = currentScreen == AppScreen.BILLING) { /* สวาปาม */ }
 
                     if (!isLoggedIn) {
-                        LoginScreen(onLoginSuccess = { id, role, route ->
-                            driverId = id; userRole = role; routeId = route; isLoggedIn = true
+                        LoginScreen(onLoginSuccess = { id, name, role, route ->
+                            driverId = id; driverName = name; userRole = role; routeId = route; isLoggedIn = true
                         })
                     } else {
                         when (currentScreen) {
                             AppScreen.BILLING -> BillingScreen(
-                                viewModel = billingViewModel, driverId = driverId, routeId = routeId, userRole = userRole,
+                                viewModel = billingViewModel, driverId = driverId, driverName = driverName, routeId = routeId, userRole = userRole,
                                 onNavigateToAdmin = { currentScreen = AppScreen.ADMIN },
                                 onNavigateToHistory = { currentScreen = AppScreen.HISTORY }
                             )
@@ -517,7 +549,7 @@ class MainActivity1 : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LoginScreen(onLoginSuccess: (String, String, String) -> Unit) {
+fun LoginScreen(onLoginSuccess: (String, String, String, String) -> Unit) {
     var empId by remember { mutableStateOf("") }
     var routeId by remember { mutableStateOf("") }
     val context = LocalContext.current
@@ -550,18 +582,19 @@ fun LoginScreen(onLoginSuccess: (String, String, String) -> Unit) {
 
     val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
     val savedRoutesStr = prefs.getString("routes_list", "[]")
-    val routeOptions = remember(savedRoutesStr) {
-        try { val arr = JSONArray(savedRoutesStr); List(arr.length()) { arr.getString(it) } } catch (e: Exception) { emptyList() }
+    val routeOptions = remember(savedRoutesStr) { parseRoutes(savedRoutesStr) }
+    val selectedRouteName = remember(routeId, routeOptions) {
+        routeOptions.find { it.id == routeId }?.name ?: ""
     }
 
     fun performLogin() {
         if (routeId.isBlank()) { Toast.makeText(context, "กรุณาระบุสาย", Toast.LENGTH_SHORT).show(); return }
-        if (empId == "9999") { onLoginSuccess("9999", "ADMIN", routeId); return }
+        if (empId == "9999") { onLoginSuccess("9999", "ผู้ดูแลระบบ", "ADMIN", routeId); return }
         if (empId.isNotEmpty()) {
             scope.launch(Dispatchers.IO) {
                 val emp = db.employeeDao().getEmployeeById(empId)
                 withContext(Dispatchers.Main) {
-                    if (emp != null) onLoginSuccess(emp.emp_id, emp.role, routeId)
+                    if (emp != null) onLoginSuccess(emp.emp_id, emp.name, emp.role, routeId)
                     else Toast.makeText(context, "รหัสพนักงานไม่ถูกต้อง", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -595,7 +628,26 @@ fun LoginScreen(onLoginSuccess: (String, String, String) -> Unit) {
                         )
                         if (routeOptions.isNotEmpty()) {
                             ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                                routeOptions.forEach { opt -> DropdownMenuItem(text = { Text("สาย $opt") }, onClick = { routeId = opt; expanded = false }) }
+                                routeOptions.forEach { opt ->
+                                    DropdownMenuItem(
+                                        text = { Text("สาย ${opt.display}") },
+                                        onClick = { routeId = opt.id; expanded = false }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (selectedRouteName.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Text("สายนี้คือ", fontSize = 12.sp, color = Color.Gray)
+                                Text(selectedRouteName, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.primary)
                             }
                         }
                     }
@@ -788,7 +840,7 @@ fun AdminScreen(onBack: () -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BillingScreen(
-    viewModel: BillingViewModel, driverId: String, routeId: String, userRole: String,
+    viewModel: BillingViewModel, driverId: String, driverName: String, routeId: String, userRole: String,
     onNavigateToAdmin: () -> Unit, onNavigateToHistory: () -> Unit
 ) {
     val context = LocalContext.current
@@ -969,49 +1021,118 @@ fun BillingScreen(
     }
 
     if (showPreviewDialog && !showPrintQueueDialog) {
+        // สร้างลิสต์เอกสารที่จะพิมพ์ เพื่อ preview ให้ตรงใบจริงทุกใบ
+        val previewDocs = remember(printDelivery, printTax) {
+            buildList {
+                if (printDelivery) { add("ใบส่งของ\nDELIVERY NOTE"); add("ใบส่งของ\nDELIVERY NOTE (สำเนาร้านค้า)") }
+                if (printTax) { add("ใบกำกับภาษี/ใบเสร็จรับเงิน\nTAX INVOICE/RECEIPT"); add("ใบกำกับภาษี/ใบเสร็จรับเงิน\nTAX INVOICE/RECEIPT (สำเนาร้านค้า)") }
+            }
+        }
+        var previewIndex by remember(previewDocs) { mutableIntStateOf(0) }
+        val safeIndex = previewIndex.coerceIn(0, (previewDocs.size - 1).coerceAtLeast(0))
+        val currentDocTitle = previewDocs.getOrNull(safeIndex) ?: "ใบส่งของ\nDELIVERY NOTE"
+        val isTaxInvoice = currentDocTitle.contains("ใบกำกับภาษี")
+
+        // เลขบิลที่จะโผล่บน preview = maxOrderId + offset + 1
+        var projectedInvoice by remember { mutableStateOf("......................") }
+        LaunchedEffect(Unit) {
+            withContext(Dispatchers.IO) {
+                val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                val offset = prefs.getLong("invoice_offset", 0L)
+                val maxId = db.orderDao().getAllOrdersSync().maxOfOrNull { it.id } ?: 0L
+                val nextId = maxId + offset + 1
+                projectedInvoice = String.format("%s%07d", routeId, nextId)
+            }
+        }
+        val displayInvoiceNo = if (isTaxInvoice) "V$projectedInvoice" else projectedInvoice
+        val currentDateStr = remember { SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("th", "TH")).format(Date()) }
+
         AlertDialog(
             onDismissRequest = { showPreviewDialog = false },
-            title = { Text("พรีวิวใบเสร็จ", fontWeight = FontWeight.Bold) },
+            title = {
+                Column {
+                    Text("พรีวิวใบเสร็จ (ใบที่ ${safeIndex + 1}/${previewDocs.size})", fontWeight = FontWeight.Bold)
+                    if (previewDocs.size > 1) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row {
+                            OutlinedButton(
+                                onClick = { if (safeIndex > 0) previewIndex = safeIndex - 1 },
+                                enabled = safeIndex > 0,
+                                modifier = Modifier.weight(1f)
+                            ) { Text("◀ ใบก่อนหน้า", fontSize = 12.sp) }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            OutlinedButton(
+                                onClick = { if (safeIndex < previewDocs.size - 1) previewIndex = safeIndex + 1 },
+                                enabled = safeIndex < previewDocs.size - 1,
+                                modifier = Modifier.weight(1f)
+                            ) { Text("ใบถัดไป ▶", fontSize = 12.sp) }
+                        }
+                    }
+                }
+            },
             text = {
                 val scrollState = rememberScrollState()
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFFFAFAFA))
+                        .background(Color.White)
                         .border(1.dp, Color.LightGray)
-                        .padding(16.dp)
+                        .padding(horizontal = 12.dp, vertical = 16.dp)
                         .verticalScroll(scrollState)
                 ) {
-                    Text(myCompanyName, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Text(myCompanyAddress, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontSize = 12.sp)
-                    Text("เลขผู้เสียภาษี: $myCompanyTaxId", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontSize = 12.sp)
-                    Text("(สำนักงานใหญ่)", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontSize = 12.sp)
+                    // หัวเรื่องเอกสาร (ตรงกับบรรทัดแรกของใบจริง)
+                    currentDocTitle.split("\n").forEach { line ->
+                        Text(line, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    // หัวบริษัท
+                    Text(myCompanyName, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text(myCompanyAddress, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontSize = 11.sp)
+                    Text("เลขประจำตัวผู้เสียภาษี $myCompanyTaxId (สำนักงานใหญ่)", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontSize = 11.sp)
+
+                    Spacer(modifier = Modifier.height(6.dp))
                     DashedDivider()
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
-                    Text("ลูกค้า: ${selectedGroup ?: "-"}", fontSize = 12.sp)
-                    Text("ที่อยู่: ${currentAddress.replace("\n", " ")}", fontSize = 12.sp)
-                    Text("สาขา: $branchInput", fontSize = 12.sp)
+                    // เลขที่บิล + วันที่
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        Text("เลขที่ $displayInvoiceNo", modifier = Modifier.weight(1f), fontSize = 12.sp)
+                        Text("วันที่ $currentDateStr", fontSize = 12.sp)
+                    }
 
+                    Spacer(modifier = Modifier.height(6.dp))
+                    DashedDivider()
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // ข้อมูลลูกค้า
+                    Text("ลูกค้า: ${selectedGroup ?: "-"}", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    if (currentAddress.isNotBlank()) {
+                        Text("ที่อยู่: ${currentAddress.replace("\n", " ")}", fontSize = 12.sp)
+                    }
+                    if (currentTaxId.isNotBlank()) {
+                        Text("เลขผู้เสียภาษี: $currentTaxId", fontSize = 12.sp)
+                    }
+                    Text("สาขา: ${if (branchInput.isNotBlank()) branchInput else "-"}", fontSize = 12.sp)
                     if (cvCode.isNotEmpty()) Text("CV.CODE: $cvCode", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     if (poNumber.isNotEmpty()) Text("เลขที่ PO: $poNumber", fontSize = 12.sp, fontWeight = FontWeight.Bold)
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     DashedDivider()
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
+                    // หัวตาราง
                     Row(modifier = Modifier.fillMaxWidth()) {
-                        Text("รายการ", modifier = Modifier.weight(1f), fontSize = 12.sp)
-                        Text("จำนวน", modifier = Modifier.width(50.dp), textAlign = TextAlign.End, fontSize = 12.sp)
-                        Text("จำนวนเงิน", modifier = Modifier.width(80.dp), textAlign = TextAlign.End, fontSize = 12.sp)
+                        Text("รายการ", modifier = Modifier.weight(1f), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("จำนวน", modifier = Modifier.width(50.dp), textAlign = TextAlign.End, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("จำนวนเงิน", modifier = Modifier.width(80.dp), textAlign = TextAlign.End, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
 
                     Spacer(modifier = Modifier.height(4.dp))
                     DashedDivider()
                     Spacer(modifier = Modifier.height(4.dp))
 
+                    // รายการสินค้า
                     quantities.filter { it.value > 0 }.forEach { (pId, qty) ->
                         val product = products.find { it.id == pId }
                         if (product != null) {
@@ -1023,42 +1144,42 @@ fun BillingScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     DashedDivider()
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
+                    // สรุปยอด — โชว์ VAT เฉพาะใบกำกับภาษี (ตรงกับตัวปริ้น)
                     val vat = totalAmountState.doubleValue * 7 / 107
                     val beforeVat = totalAmountState.doubleValue - vat
 
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        Text("รวมเงิน", modifier = Modifier.weight(1f), fontSize = 12.sp)
-                        Text(String.format("%,.2f", beforeVat), textAlign = TextAlign.End, fontSize = 12.sp)
-                    }
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        Text("ภาษีมูลค่าเพิ่ม", modifier = Modifier.weight(1f), fontSize = 12.sp)
-                        Text(String.format("%,.2f", vat), textAlign = TextAlign.End, fontSize = 12.sp)
+                    if (isTaxInvoice) {
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            Text("รวมเงิน", modifier = Modifier.weight(1f), fontSize = 12.sp)
+                            Text(String.format("%,.2f", beforeVat), textAlign = TextAlign.End, fontSize = 12.sp)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            Text("ภาษีมูลค่าเพิ่ม", modifier = Modifier.weight(1f), fontSize = 12.sp)
+                            Text(String.format("%,.2f", vat), textAlign = TextAlign.End, fontSize = 12.sp)
+                        }
                     }
                     Row(modifier = Modifier.fillMaxWidth()) {
                         Text("ยอดเงินสุทธิ", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         Text(String.format("%,.2f", totalAmountState.doubleValue), fontWeight = FontWeight.Bold, textAlign = TextAlign.End, fontSize = 14.sp)
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     DashedDivider()
-                    Spacer(modifier = Modifier.height(16.dp))
 
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                            Text("....................", fontSize = 12.sp)
-                            Text("ผู้รับของ", fontSize = 12.sp)
-                        }
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                            Text("....................", fontSize = 12.sp)
-                            Text("ผู้ส่งของ", fontSize = 12.sp)
-                        }
-                    }
+                    // พื้นที่ตราประทับ (ใบจริงเว้น ~250px)
+                    Spacer(modifier = Modifier.height(80.dp))
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    // ผู้รับของ ชิดซ้าย
+                    Text("ผู้รับของ ....................", fontSize = 12.sp, modifier = Modifier.align(Alignment.Start))
+                    Spacer(modifier = Modifier.height(48.dp))
+                    // ผู้ส่งของ ชิดขวา
+                    Text("ผู้ส่งของ ....................", fontSize = 12.sp, modifier = Modifier.align(Alignment.End))
+
+                    Spacer(modifier = Modifier.height(12.dp))
                     val docs = mutableListOf<String>()
                     if (printDelivery) docs.add("ใบส่งของ (2 ใบ)")
                     if (printTax) docs.add("ใบกำกับภาษี (2 ใบ)")
@@ -1076,8 +1197,8 @@ fun BillingScreen(
                                     customer_id = custId,
                                     total_amount = totalAmountState.doubleValue,
                                     timestamp = System.currentTimeMillis(),
-                                    po_number = poNumber,
-                                    cv_code = cvCode
+                                    cv_code = cvCode,
+                                    po_number = poNumber
                                 )
                             )
                             val items = quantities.filter { it.value > 0 }.map { (pId, qty) -> OrderItem(order_id = orderId, product_id = pId, quantity = qty, subtotal = (products.find { it.id == pId }?.price ?: 0.0) * qty) }
@@ -1108,10 +1229,34 @@ fun BillingScreen(
         )
     }
 
+    val routeName = remember(routeId) { lookupRouteName(context, routeId) }
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("เปิดบิล (สาย $routeId)", fontWeight = FontWeight.Bold) },
+                title = {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                            Text("เปิดบิล", fontWeight = FontWeight.Bold)
+                            Spacer(Modifier.width(8.dp))
+                            Surface(
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    if (routeName.isNotBlank()) "สาย $routeId — $routeName" else "สาย $routeId",
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                        if (driverName.isNotBlank()) {
+                            Text("คนขับ: $driverName", fontSize = 12.sp, color = Color.Gray)
+                        }
+                    }
+                },
                 actions = {
                     SyncStatusIcon()
                     Box {

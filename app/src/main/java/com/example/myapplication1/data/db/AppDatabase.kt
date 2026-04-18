@@ -6,7 +6,7 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 // 🌟 เพิ่ม Employee::class เข้าไปในวงเล็บ
-@Database(entities = [Customer::class, Order::class, OrderItem::class, Product::class, Employee::class], version = 1)
+@Database(entities = [Customer::class, Order::class, OrderItem::class, Product::class, Employee::class], version = 2)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun customerDao(): CustomerDao
     abstract fun orderDao(): OrderDao

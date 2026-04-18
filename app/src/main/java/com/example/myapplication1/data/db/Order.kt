@@ -9,5 +9,7 @@ data class Order(
     val customer_id: Long,
     val total_amount: Double,
     val timestamp: Long,
-    val is_synced: Boolean = false
+    val is_synced: Boolean = false,
+    val cv_code: String = "",
+    val po_number: String = ""
 )

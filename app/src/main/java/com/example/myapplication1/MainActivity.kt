@@ -497,7 +497,7 @@ fun SyncStatusIcon() {
 
     Icon(
         imageVector = if (online) Icons.Rounded.CloudDone else Icons.Rounded.CloudOff,
-        contentDescription = if (online) "Online" else "Offline",
+        contentDescription = if (online) "ออนไลน์" else "ออฟไลน์",
         tint = tint,
         modifier = Modifier.size(22.dp).padding(end = 4.dp)
     )
@@ -577,9 +577,9 @@ class MainActivity1 : ComponentActivity() {
         viewModel.viewModelScope.launch(Dispatchers.IO) {
             val db = AppDatabase.getDatabase(applicationContext)
             if (db.productDao().getAllProducts().first().isEmpty()) {
-                db.productDao().insert(Product(name = "Ice Pack", price = 10.0))
-                db.productDao().insert(Product(name = "Ice Square", price = 18.0))
-                db.productDao().insert(Product(name = "Small Tube", price = 60.0))
+                db.productDao().insert(Product(name = "น้ำแข็งแพ็ค", price = 10.0))
+                db.productDao().insert(Product(name = "น้ำแข็งเหลี่ยม", price = 18.0))
+                db.productDao().insert(Product(name = "หลอดเล็ก", price = 60.0))
             }
         }
     }
@@ -621,10 +621,10 @@ fun LoginScreen(onLoginSuccess: (String, String, String, String) -> Unit) {
     if (showSyncError) {
         AlertDialog(
             onDismissRequest = { },
-            title = { Text("⚠️ Connection Failed!", color = Color.Red, fontWeight = FontWeight.Bold, fontSize = 24.sp) },
-            text = { Text("Unable to sync data with server. Please check your internet connection and restart the app.", fontSize = 18.sp) },
+            title = { Text("⚠️ การเชื่อมต่อล้มเหลว!", color = Color.Red, fontWeight = FontWeight.Bold, fontSize = 24.sp) },
+            text = { Text("ไม่สามารถซิงค์ข้อมูลกับเซิร์ฟเวอร์ได้\nกรุณาตรวจสอบอินเทอร์เน็ต (เน็ตมือถือหรือ Wi-Fi)\nและลองเข้าแอปใหม่อีกครั้ง", fontSize = 18.sp) },
             confirmButton = {
-                Button(onClick = { showSyncError = false }) { Text("Dismiss (Work Offline)") }
+                Button(onClick = { showSyncError = false }) { Text("รับทราบ (ใช้งานออฟไลน์)") }
             }
         )
     }
@@ -638,14 +638,14 @@ fun LoginScreen(onLoginSuccess: (String, String, String, String) -> Unit) {
     val selectedRouteName = selectedRoute?.name ?: ""
 
     fun performLogin() {
-        if (routeId.isBlank()) { Toast.makeText(context, "Please specify route", Toast.LENGTH_SHORT).show(); return }
-        if (empId == "9999") { onLoginSuccess("9999", "Administrator", "ADMIN", routeId); return }
+        if (routeId.isBlank()) { Toast.makeText(context, "กรุณาระบุสาย", Toast.LENGTH_SHORT).show(); return }
+        if (empId == "9999") { onLoginSuccess("9999", "ผู้ดูแลระบบ", "ADMIN", routeId); return }
         if (empId.isNotEmpty()) {
             scope.launch(Dispatchers.IO) {
                 val emp = db.employeeDao().getEmployeeById(empId)
                 withContext(Dispatchers.Main) {
                     if (emp != null) onLoginSuccess(emp.emp_id, emp.name, emp.role, routeId)
-                    else Toast.makeText(context, "Invalid employee ID", Toast.LENGTH_SHORT).show()
+                    else Toast.makeText(context, "รหัสพนักงานไม่ถูกต้อง", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -682,7 +682,7 @@ fun LoginScreen(onLoginSuccess: (String, String, String, String) -> Unit) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "Employee ID", 
+                            "รหัสพนักงาน", 
                             modifier = Modifier.weight(1f),
                             fontSize = 17.sp, 
                             fontWeight = FontWeight.Bold,
@@ -735,7 +735,7 @@ fun LoginScreen(onLoginSuccess: (String, String, String, String) -> Unit) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "Route", 
+                            "สายที่ขับ", 
                             modifier = Modifier.weight(1f),
                             fontSize = 17.sp, 
                             fontWeight = FontWeight.Bold,
@@ -765,7 +765,7 @@ fun LoginScreen(onLoginSuccess: (String, String, String, String) -> Unit) {
                                 ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                                     routeOptions.forEach { opt ->
                                         DropdownMenuItem(
-                                            text = { Text("Route ${opt.display}", fontSize = 14.sp) },
+                                            text = { Text("สาย ${opt.display}", fontSize = 14.sp) },
                                             onClick = { routeId = opt.id; expanded = false }
                                         )
                                     }
@@ -804,7 +804,7 @@ fun LoginScreen(onLoginSuccess: (String, String, String, String) -> Unit) {
                         shape = RoundedCornerShape(16.dp),
                         elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
                     ) { 
-                        Text("Login", fontSize = 20.sp, fontWeight = FontWeight.Bold) 
+                        Text("เข้าสู่ระบบ", fontSize = 20.sp, fontWeight = FontWeight.Bold) 
                     }
                 }
             }
@@ -854,10 +854,10 @@ fun HistoryScreen(driverId: String, driverName: String, routeId: String, userRol
         val orderItems = allItems.filter { it.order_id == order.id }
         AlertDialog(
             onDismissRequest = { editingOrder = null },
-            title = { Text("Edit Bill #${order.id + offset}", fontWeight = FontWeight.Bold) },
+            title = { Text("แก้ไขบิล #${order.id + offset}", fontWeight = FontWeight.Bold) },
             text = {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                    Text("Store: ${customer?.store_name ?: "-"}", fontWeight = FontWeight.Medium)
+                    Text("ร้าน: ${customer?.store_name ?: "-"}", fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(12.dp))
                     orderItems.forEach { item ->
                         val product = products.find { it.id == item.product_id }
@@ -865,13 +865,13 @@ fun HistoryScreen(driverId: String, driverName: String, routeId: String, userRol
                         val currentQty = editQty[key] ?: item.quantity.toString()
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
                             Column(Modifier.weight(1f)) {
-                                Text(product?.name ?: "Product#${item.product_id}", fontWeight = FontWeight.Medium, fontSize = 14.sp)
-                                Text("฿${product?.price ?: 0.0}/unit", fontSize = 12.sp, color = Color.Gray)
+                                Text(product?.name ?: "สินค้า#${item.product_id}", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                                Text("฿${product?.price ?: 0.0}/หน่วย", fontSize = 12.sp, color = Color.Gray)
                             }
                             OutlinedTextField(
                                 value = currentQty,
                                 onValueChange = { v -> editQty = editQty + (key to v.filter { c -> c.isDigit() }) },
-                                label = { Text("Qty") },
+                                label = { Text("จำนวน") },
                                 singleLine = true,
                                 modifier = Modifier.width(90.dp),
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
@@ -895,13 +895,13 @@ fun HistoryScreen(driverId: String, driverName: String, routeId: String, userRol
                         withContext(Dispatchers.Main) {
                             editingOrder = null
                             editQty = emptyMap()
-                            Toast.makeText(context, "Saved — awaiting sync", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "บันทึกแล้ว — รอซิงค์ใหม่", Toast.LENGTH_SHORT).show()
                             reload()
                         }
                     }
-                }) { Text("Save") }
+                }) { Text("บันทึก") }
             },
-            dismissButton = { OutlinedButton(onClick = { editingOrder = null; editQty = emptyMap() }) { Text("Cancel") } }
+            dismissButton = { OutlinedButton(onClick = { editingOrder = null; editQty = emptyMap() }) { Text("ยกเลิก") } }
         )
     }
 
@@ -914,8 +914,8 @@ fun HistoryScreen(driverId: String, driverName: String, routeId: String, userRol
             val qtyMap = orderItems.associate { it.product_id to it.quantity }
             AlertDialog(
                 onDismissRequest = { reprintOrder = null; reprintIndex = 0; reprintQueue = emptyList() },
-                title = { Text("Reprint ${reprintIndex + 1}/${reprintQueue.size}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) },
-                text = { Text("Prepare printing:\n$docTitle\n\n📌 Remove old receipt before printing", fontSize = 16.sp) },
+                title = { Text("ปริ้นซ้ำ ${reprintIndex + 1}/${reprintQueue.size}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) },
+                text = { Text("เตรียมพิมพ์:\n$docTitle\n\n📌 ฉีกกระดาษใบเดิมออกก่อน แล้วกดพิมพ์", fontSize = 16.sp) },
                 confirmButton = {
                     Button(
                         onClick = {
@@ -938,7 +938,7 @@ fun HistoryScreen(driverId: String, driverName: String, routeId: String, userRol
                                     reprintIndex++
                                     if (reprintIndex >= reprintQueue.size) {
                                         reprintOrder = null; reprintIndex = 0; reprintQueue = emptyList()
-                                        Toast.makeText(context, "Reprint successful", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "ปริ้นซ้ำสำเร็จ", Toast.LENGTH_SHORT).show()
                                     }
                                 }
                             }
@@ -947,7 +947,7 @@ fun HistoryScreen(driverId: String, driverName: String, routeId: String, userRol
                         colors = ButtonDefaults.buttonColors(containerColor = if (isPrinting) Color.Gray else MaterialTheme.colorScheme.primary)
                     ) {
                         if (isPrinting) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
-                        else Text("Print Now", fontSize = 16.sp)
+                        else Text("พิมพ์ใบนี้เลย", fontSize = 16.sp)
                     }
                 }
             )
@@ -956,7 +956,7 @@ fun HistoryScreen(driverId: String, driverName: String, routeId: String, userRol
 
     Scaffold(topBar = {
         CenterAlignedTopAppBar(
-            title = { Text("Billing History", fontWeight = FontWeight.Bold) },
+            title = { Text("ประวัติบิล", fontWeight = FontWeight.Bold) },
             navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back") } }
         )
     }) { padding ->
@@ -977,13 +977,13 @@ fun HistoryScreen(driverId: String, driverName: String, routeId: String, userRol
                                 Text(customer?.store_name ?: "-", fontWeight = FontWeight.Medium)
                                 Text(dateStr, fontSize = 12.sp, color = Color.Gray)
                                 Text("฿${"%.2f".format(order.total_amount)}", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                                if (!order.is_synced) Text("⏳ Awaiting sync", fontSize = 11.sp, color = Color(0xFFE65100))
+                                if (!order.is_synced) Text("⏳ รอซิงค์", fontSize = 11.sp, color = Color(0xFFE65100))
                             }
                         }
                         if (orderItems.isNotEmpty()) {
                             Spacer(Modifier.height(6.dp))
                             orderItems.forEach { item ->
-                                val pName = products.find { it.id == item.product_id }?.name ?: "Product#${item.product_id}"
+                                val pName = products.find { it.id == item.product_id }?.name ?: "สินค้า#${item.product_id}"
                                 Text("• $pName × ${item.quantity} = ฿${"%.0f".format(item.subtotal)}", fontSize = 12.sp, color = Color.Gray)
                             }
                         }
@@ -993,16 +993,16 @@ fun HistoryScreen(driverId: String, driverName: String, routeId: String, userRol
                             OutlinedButton(
                                 onClick = {
                                     val q = mutableListOf<String>()
-                                    if (customer?.print_delivery == true) { q.add("Delivery Note\nDELIVERY NOTE"); q.add("Delivery Note\nDELIVERY NOTE (Merchant Copy)") }
-                                    if (customer?.print_tax == true) { q.add("Tax Invoice/Receipt\nTAX INVOICE/RECEIPT"); q.add("Tax Invoice/Receipt\nTAX INVOICE/RECEIPT (Merchant Copy)") }
-                                    if (q.isEmpty()) q.add("Delivery Note\nDELIVERY NOTE")
+                                    if (customer?.print_delivery == true) { q.add("ใบส่งของ\nDELIVERY NOTE"); q.add("ใบส่งของ\nDELIVERY NOTE (สำเนาร้านค้า)") }
+                                    if (customer?.print_tax == true) { q.add("ใบกำกับภาษี/ใบเสร็จรับเงิน\nTAX INVOICE/RECEIPT"); q.add("ใบกำกับภาษี/ใบเสร็จรับเงิน\nTAX INVOICE/RECEIPT (สำเนาร้านค้า)") }
+                                    if (q.isEmpty()) q.add("ใบส่งของ\nDELIVERY NOTE")
                                     reprintOrder = order; reprintQueue = q; reprintIndex = 0
                                 },
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Icon(Icons.Default.Print, null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("Reprint", fontSize = 13.sp)
+                                Text("ปริ้นซ้ำ", fontSize = 13.sp)
                             }
                             // Edit button — Admin only
                             if (isAdmin) {
@@ -1016,7 +1016,7 @@ fun HistoryScreen(driverId: String, driverName: String, routeId: String, userRol
                                 ) {
                                     Icon(Icons.Default.Edit, null, modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(4.dp))
-                                    Text("Edit", fontSize = 13.sp)
+                                    Text("แก้ไข", fontSize = 13.sp)
                                 }
                             }
                         }
@@ -1036,7 +1036,7 @@ fun AdminScreen(driverId: String, routeId: String, userRole: String, onBack: () 
     BackHandler(onBack = onBack)
 
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Customers", "Products", "Invoice Settings")
+    val tabs = listOf("จัดการสาขา", "ราคาสินค้า", "ตั้งค่าเลขบิล")
 
     val allCustomers by db.customerDao().getAllCustomers().collectAsState(initial = emptyList())
     var editingCustomer by remember { mutableStateOf<Customer?>(null) }
@@ -1057,7 +1057,7 @@ fun AdminScreen(driverId: String, routeId: String, userRole: String, onBack: () 
     Scaffold(
         topBar = {
             Column {
-                CenterAlignedTopAppBar(title = { Text("Admin Settings", fontWeight = FontWeight.Bold) }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back") } })
+                CenterAlignedTopAppBar(title = { Text("ตั้งค่าระบบหลังบ้าน", fontWeight = FontWeight.Bold) }, navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back") } })
                 TabRow(selectedTabIndex = selectedTabIndex) { tabs.forEachIndexed { index, title -> Tab(selected = selectedTabIndex == index, onClick = { selectedTabIndex = index }, text = { Text(title, fontWeight = FontWeight.Bold) }) } }
             }
         }
@@ -1066,46 +1066,46 @@ fun AdminScreen(driverId: String, routeId: String, userRole: String, onBack: () 
             if (selectedTabIndex == 0) {
                 LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                     item {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(if (editingCustomer == null) "Add New Customer" else "Edit Customer Info", fontWeight = FontWeight.Bold, fontSize = 18.sp); if (editingCustomer != null) { TextButton(onClick = { clearCustomerForm() }) { Text("Cancel") } } }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(if (editingCustomer == null) "เพิ่มสาขาใหม่" else "แก้ไขข้อมูลสาขา", fontWeight = FontWeight.Bold, fontSize = 18.sp); if (editingCustomer != null) { TextButton(onClick = { clearCustomerForm() }) { Text("ยกเลิก") } } }
                         Spacer(modifier = Modifier.height(8.dp))
                         Card(colors = CardDefaults.cardColors(containerColor = if (editingCustomer == null) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.primaryContainer)) {
                             Column(Modifier.padding(16.dp)) {
-                                OutlinedTextField(value = storeName, onValueChange = { storeName = it }, label = { Text("Store Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                                OutlinedTextField(value = storeName, onValueChange = { storeName = it }, label = { Text("ชื่อร้าน") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Row { OutlinedTextField(value = branchCode, onValueChange = { branchCode = it }, label = { Text("Branch Code") }, modifier = Modifier.weight(1f), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)); Spacer(modifier = Modifier.width(8.dp)); OutlinedTextField(value = taxId, onValueChange = { taxId = it }, label = { Text("Tax ID") }, modifier = Modifier.weight(1f), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)) }
+                                Row { OutlinedTextField(value = branchCode, onValueChange = { branchCode = it }, label = { Text("รหัสสาขา") }, modifier = Modifier.weight(1f), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)); Spacer(modifier = Modifier.width(8.dp)); OutlinedTextField(value = taxId, onValueChange = { taxId = it }, label = { Text("เลขผู้เสียภาษี") }, modifier = Modifier.weight(1f), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)) }
                                 Spacer(modifier = Modifier.height(8.dp))
-                                OutlinedTextField(value = address, onValueChange = { address = it }, label = { Text("Address") }, modifier = Modifier.fillMaxWidth(), maxLines = 3)
+                                OutlinedTextField(value = address, onValueChange = { address = it }, label = { Text("ที่อยู่") }, modifier = Modifier.fillMaxWidth(), maxLines = 3)
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = printDelivery, onCheckedChange = { printDelivery = it }); Text("Delivery Note"); Spacer(modifier = Modifier.width(16.dp)); Checkbox(checked = printTax, onCheckedChange = { printTax = it }); Text("Tax Invoice") }
+                                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(checked = printDelivery, onCheckedChange = { printDelivery = it }); Text("ใบส่งของ"); Spacer(modifier = Modifier.width(16.dp)); Checkbox(checked = printTax, onCheckedChange = { printTax = it }); Text("ใบกำกับภาษี") }
                                 Spacer(modifier = Modifier.height(16.dp))
-                                if (editingCustomer == null) { Button(onClick = { if (storeName.isBlank() || branchCode.isBlank()) return@Button; coroutineScope.launch { db.customerDao().insert(Customer(store_name = storeName.trim(), branch_code = branchCode.trim(), tax_id = taxId.trim(), address = address.trim(), print_delivery = printDelivery, print_tax = printTax)); Toast.makeText(context, "Added successfully!", Toast.LENGTH_SHORT).show(); clearCustomerForm() } }, modifier = Modifier.fillMaxWidth()) { Text("Save New Info") } } else { Row { Button(onClick = { coroutineScope.launch { db.customerDao().update(editingCustomer!!.copy(store_name = storeName.trim(), branch_code = branchCode.trim(), tax_id = taxId.trim(), address = address.trim(), print_delivery = printDelivery, print_tax = printTax)); Toast.makeText(context, "Updated successfully!", Toast.LENGTH_SHORT).show(); clearCustomerForm() } }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))) { Text("Save Edits") }; Spacer(Modifier.width(8.dp)); Button(onClick = { coroutineScope.launch { db.customerDao().delete(editingCustomer!!); clearCustomerForm() } }, modifier = Modifier.weight(0.5f), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Icon(Icons.Default.Delete, null) } } }
+                                if (editingCustomer == null) { Button(onClick = { if (storeName.isBlank() || branchCode.isBlank()) return@Button; coroutineScope.launch { db.customerDao().insert(Customer(store_name = storeName.trim(), branch_code = branchCode.trim(), tax_id = taxId.trim(), address = address.trim(), print_delivery = printDelivery, print_tax = printTax)); Toast.makeText(context, "เพิ่มสำเร็จ!", Toast.LENGTH_SHORT).show(); clearCustomerForm() } }, modifier = Modifier.fillMaxWidth()) { Text("บันทึกข้อมูลใหม่") } } else { Row { Button(onClick = { coroutineScope.launch { db.customerDao().update(editingCustomer!!.copy(store_name = storeName.trim(), branch_code = branchCode.trim(), tax_id = taxId.trim(), address = address.trim(), print_delivery = printDelivery, print_tax = printTax)); Toast.makeText(context, "แก้ไขเรียบร้อย!", Toast.LENGTH_SHORT).show(); clearCustomerForm() } }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))) { Text("บันทึกแก้ไข") }; Spacer(Modifier.width(8.dp)); Button(onClick = { coroutineScope.launch { db.customerDao().delete(editingCustomer!!); clearCustomerForm() } }, modifier = Modifier.weight(0.5f), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Icon(Icons.Default.Delete, null) } } }
                             }
                         }
                         Spacer(modifier = Modifier.height(24.dp))
-                        Text("Tap to edit (${allCustomers.size})", fontWeight = FontWeight.Bold, color = Color.Gray)
+                        Text("แตะที่รายการเพื่อแก้ไข (${allCustomers.size})", fontWeight = FontWeight.Bold, color = Color.Gray)
                         Spacer(modifier = Modifier.height(8.dp))
                     }
-                    items(allCustomers) { customer -> Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { editingCustomer = customer; storeName = customer.store_name; branchCode = customer.branch_code; taxId = customer.tax_id; address = customer.address; printDelivery = customer.print_delivery; printTax = customer.print_tax }, colors = CardDefaults.cardColors(containerColor = Color.White)) { Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Column(modifier = Modifier.weight(1f)) { Text(customer.store_name, fontWeight = FontWeight.Bold, fontSize = 16.sp); Text("Branch: ${customer.branch_code}", fontSize = 14.sp, color = Color.Blue) }; Icon(Icons.Default.Edit, "Edit", tint = Color.LightGray) } } }
+                    items(allCustomers) { customer -> Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { editingCustomer = customer; storeName = customer.store_name; branchCode = customer.branch_code; taxId = customer.tax_id; address = customer.address; printDelivery = customer.print_delivery; printTax = customer.print_tax }, colors = CardDefaults.cardColors(containerColor = Color.White)) { Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Column(modifier = Modifier.weight(1f)) { Text(customer.store_name, fontWeight = FontWeight.Bold, fontSize = 16.sp); Text("สาขา: ${customer.branch_code}", fontSize = 14.sp, color = Color.Blue) }; Icon(Icons.Default.Edit, "Edit", tint = Color.LightGray) } } }
                 }
             } else if (selectedTabIndex == 1) {
                 LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                     item {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(if (editingProduct == null) "Add New Product" else "Edit Product Price", fontWeight = FontWeight.Bold, fontSize = 18.sp); if (editingProduct != null) { TextButton(onClick = { clearProductForm() }) { Text("Cancel") } } }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(if (editingProduct == null) "เพิ่มสินค้าใหม่" else "แก้ไขราคาสินค้า", fontWeight = FontWeight.Bold, fontSize = 18.sp); if (editingProduct != null) { TextButton(onClick = { clearProductForm() }) { Text("ยกเลิก") } } }
                         Spacer(modifier = Modifier.height(8.dp))
                         Card(colors = CardDefaults.cardColors(containerColor = if (editingProduct == null) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.primaryContainer)) {
                             Column(Modifier.padding(16.dp)) {
-                                OutlinedTextField(value = productName, onValueChange = { productName = it }, label = { Text("Product Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+                                OutlinedTextField(value = productName, onValueChange = { productName = it }, label = { Text("ชื่อสินค้า") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
                                 Spacer(modifier = Modifier.height(8.dp))
-                                OutlinedTextField(value = productPrice, onValueChange = { productPrice = it }, label = { Text("Price (Baht)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                                OutlinedTextField(value = productPrice, onValueChange = { productPrice = it }, label = { Text("ราคา (บาท)") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
                                 Spacer(modifier = Modifier.height(16.dp))
-                                if (editingProduct == null) { Button(onClick = { val priceD = productPrice.toDoubleOrNull(); if (productName.isBlank() || priceD == null || priceD <= 0) return@Button; coroutineScope.launch { db.productDao().insert(Product(name = productName.trim(), price = priceD)); clearProductForm() } }, modifier = Modifier.fillMaxWidth()) { Text("Add Product") } } else { Row { Button(onClick = { val priceD = productPrice.toDoubleOrNull(); if (productName.isBlank() || priceD == null || priceD <= 0) return@Button; coroutineScope.launch { db.productDao().update(editingProduct!!.copy(name = productName.trim(), price = priceD)); clearProductForm() } }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))) { Text("Save New Price") }; Spacer(Modifier.width(8.dp)); Button(onClick = { coroutineScope.launch { db.productDao().delete(editingProduct!!); clearProductForm() } }, modifier = Modifier.weight(0.5f), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Icon(Icons.Default.Delete, null) } } }
+                                if (editingProduct == null) { Button(onClick = { val priceD = productPrice.toDoubleOrNull(); if (productName.isBlank() || priceD == null || priceD <= 0) return@Button; coroutineScope.launch { db.productDao().insert(Product(name = productName.trim(), price = priceD)); clearProductForm() } }, modifier = Modifier.fillMaxWidth()) { Text("เพิ่มสินค้า") } } else { Row { Button(onClick = { val priceD = productPrice.toDoubleOrNull(); if (productName.isBlank() || priceD == null || priceD <= 0) return@Button; coroutineScope.launch { db.productDao().update(editingProduct!!.copy(name = productName.trim(), price = priceD)); clearProductForm() } }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))) { Text("บันทึกราคาใหม่") }; Spacer(Modifier.width(8.dp)); Button(onClick = { coroutineScope.launch { db.productDao().delete(editingProduct!!); clearProductForm() } }, modifier = Modifier.weight(0.5f), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Icon(Icons.Default.Delete, null) } } }
                             }
                         }
                         Spacer(modifier = Modifier.height(24.dp))
-                        Text("All Products (${allProducts.size})", fontWeight = FontWeight.Bold, color = Color.Gray)
+                        Text("รายการสินค้าทั้งหมด (${allProducts.size})", fontWeight = FontWeight.Bold, color = Color.Gray)
                         Spacer(modifier = Modifier.height(8.dp))
                     }
-                    items(allProducts) { product -> Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { editingProduct = product; productName = product.name; productPrice = product.price.toString() }, colors = CardDefaults.cardColors(containerColor = Color.White)) { Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Column(modifier = Modifier.weight(1f)) { Text(product.name, fontWeight = FontWeight.Bold, fontSize = 18.sp); Text("Price: ฿${product.price} / unit", fontSize = 14.sp, color = Color.Gray) }; Icon(Icons.Default.Edit, "Edit", tint = Color.LightGray) } } }
+                    items(allProducts) { product -> Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { editingProduct = product; productName = product.name; productPrice = product.price.toString() }, colors = CardDefaults.cardColors(containerColor = Color.White)) { Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) { Column(modifier = Modifier.weight(1f)) { Text(product.name, fontWeight = FontWeight.Bold, fontSize = 18.sp); Text("ราคา: ฿${product.price} / หน่วย", fontSize = 14.sp, color = Color.Gray) }; Icon(Icons.Default.Edit, "Edit", tint = Color.LightGray) } } }
                 }
             } else {
                 var nextBillNo by remember { mutableStateOf("") }
@@ -1123,14 +1123,14 @@ fun AdminScreen(driverId: String, routeId: String, userRole: String, onBack: () 
 
                 LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                     item {
-                        Text("Sync Invoice Number (New Installation)", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Text("ซิงค์เลขบิล (กรณีลงแอปใหม่)", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("Next invoice will be: $currentNextInvoice", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("บิลถัดไปที่จะออกคือ: $currentNextInvoice", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         Spacer(modifier = Modifier.height(16.dp))
 
                         OutlinedTextField(
                             value = nextBillNo, onValueChange = { nextBillNo = it },
-                            label = { Text("Specify next invoice number (refer to Sheet)") },
+                            label = { Text("ระบุเลขบิลถัดไปที่ต้องการ (ดูจากใน Sheet)") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.fillMaxWidth()
                         )
@@ -1140,19 +1140,19 @@ fun AdminScreen(driverId: String, routeId: String, userRole: String, onBack: () 
                             if (desiredNext != null && desiredNext > 0) {
                                 val newOffset = desiredNext - maxOrderId - 1
                                 prefs.edit().putLong("invoice_offset", newOffset).apply()
-                                Toast.makeText(context, "Updated next invoice number to $desiredNext", Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, "อัปเดตเลขบิลถัดไปเป็น $desiredNext สำเร็จ!", Toast.LENGTH_LONG).show()
                                 nextBillNo = ""
                             }
-                        }, modifier = Modifier.fillMaxWidth()) { Text("Update Invoice Number") }
+                        }, modifier = Modifier.fillMaxWidth()) { Text("อัปเดตเลขบิล") }
 
                         Spacer(modifier = Modifier.height(32.dp))
                         Card(colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0))) {
                             Column(modifier = Modifier.padding(16.dp)) {
-                                Text("💡 Why did the invoice number reset to 1?", fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
+                                Text("💡 ทำไมเลขบิลถึงกลับมาเป็น 1 ?", fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text("Running code from Android Studio may delete the local database, resetting the invoice count.", fontSize = 14.sp)
+                                Text("เวลาคุณกด Run โค้ดจาก Android Studio ฐานข้อมูลในมือถือจะถูกลบ ทำให้เลขบิลโดนรีเซ็ตกลับไปเริ่ม 1 ใหม่", fontSize = 14.sp)
                                 Spacer(modifier = Modifier.height(8.dp))
-                                Text("👉 Fix: Check the latest invoice number in Google Sheet (e.g., if it's 3, enter 4 here) and update. The next invoice will start from the specified number.", fontSize = 14.sp)
+                                Text("👉 วิธีแก้: ให้ดูเลขบิลล่าสุดใน Google Sheet เช่น ถ้าบิลล่าสุดคือ 3 ให้พิมพ์เลข 4 ในหน้านี้แล้วกดอัปเดต บิลต่อไปจะออกเลข 4 ทันทีครับ", fontSize = 14.sp)
                             }
                         }
                     }
@@ -1289,9 +1289,9 @@ fun BillingScreen(
                             os.write("$formattedInvoice,${order.total_amount},$dateStr,$status\n".toByteArray(Charsets.UTF_8))
                         }
                     }
-                    withContext(Dispatchers.Main) { Toast.makeText(context, "Export successful", Toast.LENGTH_SHORT).show() }
+                    withContext(Dispatchers.Main) { Toast.makeText(context, "โหลดสรุปยอดสำเร็จ", Toast.LENGTH_SHORT).show() }
                 } catch (e: Exception) {
-                    withContext(Dispatchers.Main) { Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show() }
+                    withContext(Dispatchers.Main) { Toast.makeText(context, "เกิดข้อผิดพลาด: ${e.message}", Toast.LENGTH_SHORT).show() }
                 }
             }
         }
@@ -1305,8 +1305,8 @@ fun BillingScreen(
         val currentJobTitle = printQueue[currentPrintIndex]
         AlertDialog(
             onDismissRequest = { },
-            title = { Text("Printing document ${currentPrintIndex + 1} / ${printQueue.size}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) },
-            text = { Text("Prepare printing:\n$currentJobTitle\n\n📌 Remove old receipt before printing", fontSize = 18.sp) },
+            title = { Text("กำลังพิมพ์เอกสาร ${currentPrintIndex + 1} / ${printQueue.size}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) },
+            text = { Text("เตรียมพิมพ์:\n$currentJobTitle\n\n📌 กรุณาฉีกกระดาษใบเดิมออกก่อน\nแล้วกดปุ่มด้านล่างเพื่อพิมพ์ใบนี้", fontSize = 18.sp) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -1330,7 +1330,7 @@ fun BillingScreen(
                                 if (currentPrintIndex >= printQueue.size) {
                                     showPrintQueueDialog = false
                                     quantities.clear(); branchInput = ""; poNumber = ""
-                                    Toast.makeText(context, "Billing completed", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "เปิดบิลสำเร็จ", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }
@@ -1339,7 +1339,7 @@ fun BillingScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = if (isPrintingNow) Color.Gray else MaterialTheme.colorScheme.primary)
                 ) {
                     if (isPrintingNow) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
-                    else Text("Print Now", fontSize = 18.sp)
+                    else Text("พิมพ์ใบนี้เลย", fontSize = 18.sp)
                 }
             }
         )
@@ -1376,7 +1376,7 @@ fun BillingScreen(
             onDismissRequest = { showPreviewDialog = false },
             title = {
                 Column {
-                    Text("Receipt Preview (Page ${safeIndex + 1}/${previewDocs.size})", fontWeight = FontWeight.Bold)
+                    Text("พรีวิวใบเสร็จ (ใบที่ ${safeIndex + 1}/${previewDocs.size})", fontWeight = FontWeight.Bold)
                     if (previewDocs.size > 1) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Row {
@@ -1384,13 +1384,13 @@ fun BillingScreen(
                                 onClick = { if (safeIndex > 0) previewIndex = safeIndex - 1 },
                                 enabled = safeIndex > 0,
                                 modifier = Modifier.weight(1f)
-                            ) { Text("◀ Previous", fontSize = 12.sp) }
+                            ) { Text("◀ ใบก่อนหน้า", fontSize = 12.sp) }
                             Spacer(modifier = Modifier.width(8.dp))
                             OutlinedButton(
                                 onClick = { if (safeIndex < previewDocs.size - 1) previewIndex = safeIndex + 1 },
                                 enabled = safeIndex < previewDocs.size - 1,
                                 modifier = Modifier.weight(1f)
-                            ) { Text("Next ▶", fontSize = 12.sp) }
+                            ) { Text("ใบถัดไป ▶", fontSize = 12.sp) }
                         }
                     }
                 }
@@ -1414,7 +1414,7 @@ fun BillingScreen(
                     // Company header
                     Text(myCompanyName, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Text("291,291/1 ถนนเจริญพัฒนา แขวงบางชัน\nเขตคลองสามวา กรุงเทพฯ 10510", modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontSize = 11.sp)
-                    val hqLine = if (isTaxInvoice) "Tax ID $myCompanyTaxId (Head Office)" else "(Head Office)"
+                    val hqLine = if (isTaxInvoice) "เลขผู้เสียภาษี $myCompanyTaxId (สำนักงานใหญ่)" else "(สำนักงานใหญ่)"
                     Text(hqLine, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center, fontSize = 11.sp)
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -1423,8 +1423,8 @@ fun BillingScreen(
 
                     // Invoice number and date
                     Row(modifier = Modifier.fillMaxWidth()) {
-                        Text("No. $displayInvoiceNo", modifier = Modifier.weight(1.1f), fontSize = 11.sp)
-                        Text("Date $currentDateStr", modifier = Modifier.weight(0.9f), textAlign = TextAlign.End, fontSize = 11.sp)
+                        Text("เลขที่ $displayInvoiceNo", modifier = Modifier.weight(1.1f), fontSize = 11.sp)
+                        Text("วันที่ $currentDateStr", modifier = Modifier.weight(0.9f), textAlign = TextAlign.End, fontSize = 11.sp)
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -1432,14 +1432,14 @@ fun BillingScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     // Customer details
-                    Text("Customer: ${selectedGroup ?: "-"}", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text("ลูกค้า: ${selectedGroup ?: "-"}", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     if (currentAddress.isNotBlank()) {
                         var addr = currentAddress.replace("\n", " ").replace("(สำนักงานใหญ่)", "").trim()
-                        if (selectedGroup?.contains("มหาชน") == true) addr = "$addr (Head Office)"
-                        Text("Address: $addr", fontSize = 11.sp)
+                        if (selectedGroup?.contains("มหาชน") == true) addr = "$addr (สำนักงานใหญ่)"
+                        Text("ที่อยู่: $addr", fontSize = 11.sp)
                     }
                     if (currentTaxId.isNotBlank() && isTaxInvoice) {
-                        Text("Tax ID: $currentTaxId", fontSize = 11.sp)
+                        Text("เลขประจำตัวผู้เสียภาษี: $currentTaxId", fontSize = 11.sp)
                     }
                     
                     val branch = if (branchInput.isNotBlank()) branchInput else "-"
@@ -1448,7 +1448,7 @@ fun BillingScreen(
                     if (poNumber.isNotEmpty()) rightParts.add("P.O: $poNumber")
                     
                     Row(modifier = Modifier.fillMaxWidth()) {
-                        Text("Branch: $branch", modifier = Modifier.weight(1f), fontSize = 11.sp)
+                        Text("สาขา: $branch", modifier = Modifier.weight(1f), fontSize = 11.sp)
                         if (rightParts.isNotEmpty()) {
                             Text(rightParts.joinToString("  "), fontSize = 11.sp, textAlign = TextAlign.End)
                         }
@@ -1460,10 +1460,10 @@ fun BillingScreen(
 
                     // Table header
                     Row(modifier = Modifier.fillMaxWidth()) {
-                        Text("Description", modifier = Modifier.weight(1f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        Text("Qty", modifier = Modifier.width(45.dp), textAlign = TextAlign.End, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        Text("Unit Price", modifier = Modifier.width(65.dp), textAlign = TextAlign.End, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        Text("Amount", modifier = Modifier.width(75.dp), textAlign = TextAlign.End, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("รายการ", modifier = Modifier.weight(1f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("จำนวน", modifier = Modifier.width(45.dp), textAlign = TextAlign.End, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("หน่วยละ", modifier = Modifier.width(65.dp), textAlign = TextAlign.End, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("จำนวนเงิน", modifier = Modifier.width(75.dp), textAlign = TextAlign.End, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
 
                     Spacer(modifier = Modifier.height(4.dp))
@@ -1496,16 +1496,16 @@ fun BillingScreen(
                         val vat = total * 7 / 107
                         val beforeVat = total - vat
                         Row(modifier = Modifier.fillMaxWidth()) {
-                            Text("Subtotal", modifier = Modifier.weight(1f), fontSize = 11.sp)
+                            Text("รวมเงิน", modifier = Modifier.weight(1f), fontSize = 11.sp)
                             Text(String.format("%,.2f", beforeVat), textAlign = TextAlign.End, fontSize = 11.sp)
                         }
                         Row(modifier = Modifier.fillMaxWidth()) {
-                            Text("VAT 7%", modifier = Modifier.weight(1f), fontSize = 11.sp)
+                            Text("ภาษีมูลค่าเพิ่ม", modifier = Modifier.weight(1f), fontSize = 11.sp)
                             Text(String.format("%,.2f", vat), textAlign = TextAlign.End, fontSize = 11.sp)
                         }
                     }
                     Row(modifier = Modifier.fillMaxWidth()) {
-                        Text("Net Total", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("ยอดเงินสุทธิ", modifier = Modifier.weight(1f), fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         Text(String.format("%,.2f", total), fontWeight = FontWeight.Bold, textAlign = TextAlign.End, fontSize = 13.sp)
                     }
 
@@ -1514,15 +1514,15 @@ fun BillingScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     // Signatures
-                    Text("Sender ($driverId) ....................", fontSize = 12.sp, modifier = Modifier.align(Alignment.Start))
+                    Text("ผู้ส่งของ ($driverId) ....................", fontSize = 12.sp, modifier = Modifier.align(Alignment.Start))
                     Spacer(modifier = Modifier.height(100.dp))
-                    Text("Receiver ....................", fontSize = 12.sp, modifier = Modifier.align(Alignment.Start))
+                    Text("ผู้รับของ ....................", fontSize = 12.sp, modifier = Modifier.align(Alignment.Start))
 
                     Spacer(modifier = Modifier.height(24.dp))
                     val docs = mutableListOf<String>()
-                    if (printDelivery) docs.add("Delivery Note (2 copies)")
-                    if (printTax) docs.add("Tax Invoice (2 copies)")
-                    Text("💡 Prepare printing: ${docs.joinToString(" and ")}", fontSize = 11.sp, color = Color(0xFFE53935), fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                    if (printDelivery) docs.add("ใบส่งของ (2 ใบ)")
+                    if (printTax) docs.add("ใบกำกับภาษี (2 ใบ)")
+                    Text("💡 เตรียมพิมพ์: ${docs.joinToString(" และ ")}", fontSize = 11.sp, color = Color(0xFFE53935), fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                 }
             },
             confirmButton = {
@@ -1550,8 +1550,8 @@ fun BillingScreen(
                             currentCustomerCache = Customer(store_name = selectedGroup!!, branch_code = branchInput, tax_id = currentTaxId, address = currentAddress)
 
                             val q = mutableListOf<String>()
-                            if (printDelivery) { q.add("Delivery Note\nDELIVERY ORDER"); q.add("Delivery Note\nDELIVERY ORDER") }
-                            if (printTax) { q.add("Tax Invoice/Receipt\nTAX INVOICE/RECEIPT"); q.add("Tax Invoice/Receipt\nTAX INVOICE/RECEIPT") }
+                            if (printDelivery) { q.add("ใบส่งของ\nDELIVERY ORDER"); q.add("ใบส่งของ\nDELIVERY ORDER") }
+                            if (printTax) { q.add("ใบกำกับภาษี/ใบเสร็จรับเงิน\nTAX INVOICE/RECEIPT"); q.add("ใบกำกับภาษี/ใบเสร็จรับเงิน\nTAX INVOICE/RECEIPT") }
 
                             printQueue = q
                             currentPrintIndex = 0
@@ -1562,9 +1562,9 @@ fun BillingScreen(
 
                         } catch (e: Exception) { Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_LONG).show() }
                     }
-                }, modifier = Modifier.fillMaxWidth()) { Text("Confirm Print (${if(printDelivery && printTax) 4 else 2} copies)") }
+                }, modifier = Modifier.fillMaxWidth()) { Text("ยืนยันการพิมพ์ (${if(printDelivery && printTax) 4 else 2} ใบ)") }
             },
-            dismissButton = { OutlinedButton(onClick = { showPreviewDialog = false }, modifier = Modifier.fillMaxWidth()) { Text("Edit Bill") } }
+            dismissButton = { OutlinedButton(onClick = { showPreviewDialog = false }, modifier = Modifier.fillMaxWidth()) { Text("แก้ไขบิล") } }
         )
     }
 
@@ -1576,14 +1576,14 @@ fun BillingScreen(
                 title = {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                            Text("New Bill", fontWeight = FontWeight.Bold)
+                            Text("เปิดบิล", fontWeight = FontWeight.Bold)
                             Spacer(Modifier.width(8.dp))
                             Surface(
                                 color = MaterialTheme.colorScheme.primaryContainer,
                                 shape = RoundedCornerShape(8.dp)
                             ) {
                                 Text(
-                                    if (routeName.isNotBlank()) "Route $routeId — $routeName" else "Route $routeId",
+                                    if (routeName.isNotBlank()) "สาย $routeId — $routeName" else "สาย $routeId",
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp,
@@ -1592,7 +1592,7 @@ fun BillingScreen(
                             }
                         }
                         if (driverName.isNotBlank()) {
-                            Text("Driver: $driverName", fontSize = 12.sp, color = Color.Gray)
+                            Text("คนขับ: $driverName", fontSize = 12.sp, color = Color.Gray)
                         }
                     }
                 },
@@ -1604,42 +1604,42 @@ fun BillingScreen(
                             val isAdmin = userRole == "ADMIN" || driverId == "9999"
 
                             // Menu items for all drivers
-                            DropdownMenuItem(text = { Text("📜 Billing History / Reprint") }, onClick = { showMenu = false; onNavigateToHistory() })
-                            DropdownMenuItem(text = { Text("☁️ Sync Pending Bills to Cloud") }, onClick = { showMenu = false; scope.launch { Toast.makeText(context, "Checking for pending bills...", Toast.LENGTH_SHORT).show(); syncPendingCloudOrders(context, driverId, routeId) } })
+                            DropdownMenuItem(text = { Text("📜 ประวัติบิล / ปริ้นย้อนหลัง") }, onClick = { showMenu = false; onNavigateToHistory() })
+                            DropdownMenuItem(text = { Text("☁️ อัปโหลดบิลตกค้างขึ้น Cloud") }, onClick = { showMenu = false; scope.launch { Toast.makeText(context, "กำลังตรวจสอบบิลตกค้าง...", Toast.LENGTH_SHORT).show(); syncPendingCloudOrders(context, driverId, routeId) } })
 
                             // Admin-only menu items
                             if (isAdmin) {
                                 Divider()
-                                DropdownMenuItem(text = { Text("1. Export Summary (Excel)") }, onClick = { showMenu = false; exportExcelLauncher.launch("Summary_Report.csv") })
+                                DropdownMenuItem(text = { Text("1. โหลดสรุปยอด (Excel)") }, onClick = { showMenu = false; exportExcelLauncher.launch("Summary_Report.csv") })
                                 DropdownMenuItem(
-                                    text = { Text("2. Save CD Organizer file locally") },
+                                    text = { Text("2. บันทึกไฟล์ CD Organizer ลงเครื่อง") },
                                     onClick = {
                                         showMenu = false
                                         scope.launch {
-                                            Toast.makeText(context, "Generating file...", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "กำลังสร้างไฟล์...", Toast.LENGTH_SHORT).show()
                                             val (isSuccess, message) = exportCDOrganizerToPhone(context, db, products, driverId, routeId)
                                             Toast.makeText(context, message, Toast.LENGTH_LONG).show()
                                         }
                                     }
                                 )
-                                DropdownMenuItem(text = { Text("3. 🔄 Fetch Updates from Cloud") }, onClick = {
+                                DropdownMenuItem(text = { Text("3. 🔄 โหลดข้อมูลอัปเดตจาก Cloud") }, onClick = {
                                     showMenu = false
                                     scope.launch {
-                                        Toast.makeText(context, "Fetching data...", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "กำลังโหลดข้อมูล...", Toast.LENGTH_SHORT).show()
                                         downloadCustomersFromCloud(context)
                                         downloadEmployeesFromCloud(context)
                                         downloadRoutesFromCloud(context)
-                                        Toast.makeText(context, "Data updated successfully", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "โหลดข้อมูลสำเร็จ", Toast.LENGTH_SHORT).show()
                                     }
                                 })
-                                DropdownMenuItem(text = { Text("⚙️ Admin Settings") }, onClick = { showMenu = false; onNavigateToAdmin() })
-                                DropdownMenuItem(text = { Text("🔓 Unlock Kiosk Mode") }, onClick = {
+                                DropdownMenuItem(text = { Text("⚙️ ตั้งค่าระบบหลังบ้าน") }, onClick = { showMenu = false; onNavigateToAdmin() })
+                                DropdownMenuItem(text = { Text("🔓 ปลดล็อก Kiosk (ออกจากแอป)") }, onClick = {
                                     showMenu = false
                                     try {
                                         (context as? android.app.Activity)?.stopLockTask()
-                                        Toast.makeText(context, "Kiosk mode unlocked", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "ปลดล็อก Kiosk แล้ว", Toast.LENGTH_SHORT).show()
                                     } catch (e: Exception) {
-                                        Toast.makeText(context, "Failed to unlock: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "ปลดล็อกไม่สำเร็จ: ${e.message}", Toast.LENGTH_SHORT).show()
                                     }
                                 })
                             }
@@ -1651,27 +1651,27 @@ fun BillingScreen(
         bottomBar = {
             BottomAppBar(modifier = Modifier.height(110.dp)) {
                 Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column { Text("Grand Total"); Text("฿ %.2f".format(totalAmountState.doubleValue), fontSize = 26.sp, fontWeight = FontWeight.Bold) }
+                    Column { Text("ยอดรวมทั้งสิ้น"); Text("฿ %.2f".format(totalAmountState.doubleValue), fontSize = 26.sp, fontWeight = FontWeight.Bold) }
                     Button(onClick = {
-                        if (selectedGroup.isNullOrBlank() || branchInput.isBlank() || totalAmountState.doubleValue <= 0) Toast.makeText(context, "Please complete all fields", Toast.LENGTH_SHORT).show()
+                        if (selectedGroup.isNullOrBlank() || branchInput.isBlank() || totalAmountState.doubleValue <= 0) Toast.makeText(context, "กรุณากรอกให้ครบ", Toast.LENGTH_SHORT).show()
                         else showPreviewDialog = true
-                    }, modifier = Modifier.height(60.dp)) { Icon(Icons.Default.Print, null); Spacer(Modifier.width(8.dp)); Text("Print") }
+                    }, modifier = Modifier.height(60.dp)) { Icon(Icons.Default.Print, null); Spacer(Modifier.width(8.dp)); Text("สั่งพิมพ์") }
                 }
             }
         }
     ) { padding ->
         LazyColumn(modifier = Modifier.padding(padding).fillMaxSize().padding(16.dp)) {
             item {
-                Text("1. Select Customer", fontWeight = FontWeight.Bold)
+                Text("1. เลือกร้านค้า", fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(8.dp))
-                SimpleDropdown("Customer Group", dynamicCustomerGroups, selectedGroup) { selectedGroup = it; branchInput = "" }
+                SimpleDropdown("กลุ่มลูกค้า", dynamicCustomerGroups, selectedGroup) { selectedGroup = it; branchInput = "" }
                 Spacer(Modifier.height(8.dp))
 
                 if (selectedGroup != null) {
                     if (cvCode.isNotEmpty()) {
                         OutlinedTextField(
                             value = cvCode, onValueChange = {},
-                            label = { Text("CV.CODE (Auto)") },
+                            label = { Text("CV.CODE (ล็อคอัตโนมัติ)") },
                             readOnly = true, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)
                         )
                         Spacer(Modifier.height(8.dp))
@@ -1679,7 +1679,7 @@ fun BillingScreen(
                     if (selectedGroup!!.contains("เอ็กซ์ตร้า") || selectedGroup!!.contains("แอ็กซ์ตร้า")) {
                         OutlinedTextField(
                             value = poNumber, onValueChange = { poNumber = it },
-                            label = { Text("PO Number") },
+                            label = { Text("ระบุเลขที่ PO") },
                             modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next)
                         )
@@ -1689,7 +1689,7 @@ fun BillingScreen(
                     OutlinedTextField(
                         value = branchInput, 
                         onValueChange = { if (it.all { c -> c.isDigit() }) branchInput = it }, 
-                        label = { Text("Branch Code") }, 
+                        label = { Text("ระบุเลขสาขา") }, 
                         modifier = Modifier.fillMaxWidth(), 
                         singleLine = true, 
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
@@ -1697,7 +1697,7 @@ fun BillingScreen(
                 }
 
                 Spacer(Modifier.height(16.dp))
-                Text("2. Select Products", fontWeight = FontWeight.Bold)
+                Text("2. เลือกสินค้า", fontWeight = FontWeight.Bold)
             }
             items(products) { product -> ProductStepperItem(product, quantities.getOrDefault(product.id, 0)) { quantities[product.id] = it } }
         }
@@ -1710,7 +1710,7 @@ fun ProductStepperItem(product: Product, quantity: Int, onQuantityChange: (Int) 
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(product.name, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Text("฿${product.price} / unit", color = Color.Gray)
+                Text("฿${product.price} / หน่วย", color = Color.Gray)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = { if (quantity > 0) onQuantityChange(quantity - 1) }) { Icon(Icons.Rounded.Remove, null, tint = MaterialTheme.colorScheme.primary) }
@@ -1742,16 +1742,16 @@ fun SimpleDropdown(label: String, options: List<String>, selected: String?, onSe
 
     val getFriendlyName: (String) -> String = { name ->
         when {
-            name == "7-11" || name.contains("CP ALL", ignoreCase = true) || name.contains("ซีพี ออลล์") -> "7-Eleven (CP ALL)"
-            name == "CJ" || name.contains("ซี.เจ") || name.contains("ซีเจ") -> "CJ MORE"
-            name == "Lotus" || name.contains("โลตัส") || name.contains("แอ็กซ์ตร้า") || name.contains("เอ็กซ์ตร้า") -> "Lotus's (CP Axtra)"
+            name == "7-11" || name.contains("CP ALL", ignoreCase = true) || name.contains("ซีพี ออลล์") -> "7-Eleven (ซีพี ออลล์)"
+            name == "CJ" || name.contains("ซี.เจ") || name.contains("ซีเจ") -> "CJ MORE (ซีเจ มอร์)"
+            name == "Lotus" || name.contains("โลตัส") || name.contains("แอ็กซ์ตร้า") || name.contains("เอ็กซ์ตร้า") -> "Lotus's (ซีพี แอ็กซ์ตร้า)"
             else -> name
         }
     }
 
     ExposedDropdownMenuBox(expanded = exp, onExpandedChange = { exp = !exp }) {
         OutlinedTextField(
-            value = if (selected != null) getFriendlyName(selected) else "Select group...",
+            value = if (selected != null) getFriendlyName(selected) else "เลือกกลุ่ม...",
             onValueChange = {}, readOnly = true, label = { Text(label) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = exp) }, modifier = Modifier.fillMaxWidth().menuAnchor(), shape = RoundedCornerShape(12.dp)
         )

@@ -41,7 +41,7 @@ object BluetoothPrinter {
                     if (product != null && qty > 0) {
                         val subtotal = product.price * qty
                         total += subtotal
-                        // [L] Left-aligned, [R] Right-aligned
+                        // [L] ชิดซ้าย, [R] ชิดขวา
                         itemsContent += "[L]${product.name}[R]x$qty [R]${"%.2f".format(subtotal)}\n"
                     }
                 }

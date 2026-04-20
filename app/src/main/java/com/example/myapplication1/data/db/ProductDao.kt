@@ -9,7 +9,7 @@ interface ProductDao {
     @JvmSuppressWildcards
     suspend fun insert(product: Product): Long
 
-    // 🌟 2 บรรทัดนี้ที่เพิ่มเข้ามาเพื่อทำระบบแก้ราคา/ลบสินค้า
+    // Methods for updating price and deleting products
     @Update
     @JvmSuppressWildcards
     suspend fun update(product: Product): Int

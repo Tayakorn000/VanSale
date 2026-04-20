@@ -13,12 +13,12 @@ interface CustomerDao {
     @JvmSuppressWildcards
     suspend fun insertAll(customers: List<Customer>): List<Long>
 
-    // 🌟 เติม : Int ให้มันคืนค่าว่าแก้ไขไปกี่แถว (ฆ่าบัค V)
+    // Return number of rows updated
     @Update
     @JvmSuppressWildcards
     suspend fun update(customer: Customer): Int
 
-    // 🌟 เติม : Int ให้มันคืนค่าว่าลบไปกี่แถว (ฆ่าบัค V)
+    // Return number of rows deleted
     @Delete
     @JvmSuppressWildcards
     suspend fun delete(customer: Customer): Int

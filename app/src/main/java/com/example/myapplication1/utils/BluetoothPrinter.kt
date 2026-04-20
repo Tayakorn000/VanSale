@@ -19,20 +19,20 @@ object BluetoothPrinter {
         quantities: Map<Long, Int>,
         products: List<Product>,
         driverId: String,
-        receiptType: String // <--- รับค่าว่าจะเป็น "DELIVERY" (ใบส่งของ) หรือ "TAX" (ใบกำกับภาษี)
+        receiptType: String // Accept "DELIVERY" or "TAX" to determine header
     ) {
-        // 1. ค้นหาเครื่องปริ้นท์ที่เคยจับคู่ไว้ (ตัวแรกที่เจอ)
+        // 1. Select the first available paired Bluetooth printer
         val connection = BluetoothPrintersConnections.selectFirstPaired()
 
         if (connection != null) {
             try {
-                // 2. ตั้งค่า Printer (ความละเอียด 203 DPI, ขนาดกระดาษ 48mm หรือ 32 ตัวอักษร)
+                // 2. Initialize printer settings (203 DPI, 48mm paper width, 32 character limit)
                 val printer = EscPosPrinter(connection, 203, 48f, 32)
 
                 val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
                 val currentDate = sdf.format(Date())
 
-                // 3. เตรียมรายการสินค้า
+                // 3. Process line items and calculate total
                 var itemsContent = ""
                 var total = 0.0
 
@@ -41,19 +41,19 @@ object BluetoothPrinter {
                     if (product != null && qty > 0) {
                         val subtotal = product.price * qty
                         total += subtotal
-                        // [L] ชิดซ้าย, [R] ชิดขวา
+                        // [L] Left-aligned, [R] Right-aligned
                         itemsContent += "[L]${product.name}[R]x$qty [R]${"%.2f".format(subtotal)}\n"
                     }
                 }
 
-                // 4. เช็คประเภทบิลเพื่อเปลี่ยนหัวกระดาษ
+                // 4. Select header based on receipt type
                 val headerText = if (receiptType == "TAX") {
                     "[C]<b><font size='big'>ใบกำกับภาษี</font></b>\n[C]<b>(Tax Invoice)</b>"
                 } else {
                     "[C]<b><font size='big'>ใบส่งของ</font></b>\n[C]<b>(Delivery Note)</b>"
                 }
 
-                // 5. คำนวณ VAT 7% แบบรวมในตัว (ถอด VAT) เฉพาะตอนออกใบกำกับภาษี
+                // 5. Calculate 7% inclusive VAT for Tax Invoices
                 val vatText = if (receiptType == "TAX") {
                     val vat = total * 7 / 107
                     val subTotalNoVat = total - vat
@@ -62,10 +62,10 @@ object BluetoothPrinter {
                     [L]ภาษีมูลค่าเพิ่ม 7%: [R]${"%.2f".format(vat)}
                     """.trimIndent() + "\n"
                 } else {
-                    "" // ถ้าเป็นใบส่งของธรรมดา ไม่ต้องโชว์ VAT
+                    "" // Skip VAT display for delivery notes
                 }
 
-                // 6. ออกแบบหน้าตาบิล (ใช้ Tag [C] กึ่งกลาง, [L] ซ้าย, [R] ขวา, [B] ตัวหนา)
+                // 6. Construct receipt layout using formatting tags ([C] Center, [L] Left, [R] Right, [B] Bold)
                 val receiptText = """
                     $headerText
                     [C]--------------------------------

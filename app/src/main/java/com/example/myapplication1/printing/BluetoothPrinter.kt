@@ -75,14 +75,14 @@ object DBluetoothPrinter {
                 socket.connect()
                 outputStream = socket.outputStream
 
-                // รีเซ็ตเครื่องพิมพ์ให้พร้อม
+                // Reset printer to default settings
                 outputStream.write(byteArrayOf(0x1b, 0x40))
                 Thread.sleep(50)
 
-                // 🌟 สร้างภาพใบเสร็จพร้อมระบบตัดคำ และ Margin ป้องกันข้อความแหว่ง 🌟
+                // Generate receipt bitmap with word wrapping and safe margins to prevent text clipping
                 val receiptBitmap = generateReceiptBitmap(docTitle, customer, quantities, products, driverId, orderId, routeId, poNumber, cvCode)
 
-                // ส่งรูปภาพไปปริ้น
+                // Send bitmap data to printer
                 printBitmap(outputStream, receiptBitmap)
 
                 isSuccess = true
@@ -104,16 +104,16 @@ object DBluetoothPrinter {
     }
 
     // =========================================================================
-    // 🌟 ระบบวาดใบเสร็จเป็นรูปภาพ (อัปเกรดใหม่: มี Margin ซ้ายขวา + ตัดคำฉลาด)
+    // Receipt drawing system (Enhanced: includes left/right margins and intelligent word wrapping)
     // =========================================================================
     private fun generateReceiptBitmap(
         docTitle: String, customer: Customer, quantities: Map<Long, Int>,
         products: List<Product>, driverId: String, orderId: Long, routeId: String,
         poNumber: String, cvCode: String
     ): Bitmap {
-        val width = 576 // กว้างมาตรฐาน 80mm
-        val marginX = 20f // ขอบปลอดภัย (แคบลงเพื่อใช้เนื้อที่กระดาษเต็ม แต่ไม่ชิดจนเกินไป)
-        val printWidth = width - (marginX * 2) // พื้นที่เขียนตัวหนังสือจริงๆ
+        val width = 576 // Standard 80mm width
+        val marginX = 20f // Safe margins to ensure text visibility
+        val printWidth = width - (marginX * 2) // Actual drawable width
 
         val tempHeight = 3000
         val tempBitmap = Bitmap.createBitmap(width, tempHeight, Bitmap.Config.ARGB_8888)
@@ -133,10 +133,9 @@ object DBluetoothPrinter {
             textSize = 26f
         }
 
-        // ฟังก์ชันวาดข้อความจัดกลาง (ตัดคำอัตโนมัติ - ปรับปรุงการตัดคำ)
+        // Helper to draw centered text with automatic wrapping
         fun drawCenterWrap(text: String, p: Paint) {
             val textPaint = TextPaint(p)
-            // ใช้ความกว้างเต็มพื้นที่ ลดการตัดคำที่ยังไม่จำเป็น
             val layout = StaticLayout(text, textPaint, printWidth.toInt(), Layout.Alignment.ALIGN_CENTER, 1.0f, 0.0f, false)
             canvas.save()
             canvas.translate(marginX, y)
@@ -145,7 +144,7 @@ object DBluetoothPrinter {
             y += layout.height + 4f
         }
 
-        // ฟังก์ชันวาดข้อความชิดซ้าย (ตัดคำอัตโนมัติ - ปรับปรุงการตัดคำ)
+        // Helper to draw left-aligned text with automatic wrapping
         fun drawLeftWrap(text: String, p: Paint) {
             val textPaint = TextPaint(p)
             val layout = StaticLayout(text, textPaint, printWidth.toInt(), Layout.Alignment.ALIGN_NORMAL, 1.0f, 0.0f, false)
@@ -156,7 +155,7 @@ object DBluetoothPrinter {
             y += layout.height + 4f
         }
 
-        // ฟังก์ชันวาดบรรทัดที่มี ซ้าย-ขวา
+        // Helper to draw a row with left and right aligned text
         fun drawRow(left: String, right: String, p: Paint) {
             val rightWidth = p.measureText(right)
             val maxLeftWidth = printWidth - rightWidth - 10f
@@ -188,15 +187,15 @@ object DBluetoothPrinter {
             y += 16f
         }
 
-        // ฟังก์ชันวาดตารางสินค้า (3 คอลัมน์: จำนวน / หน่วยละ / จำนวนเงิน)
+        // Helper to draw item row with 3 columns: Qty / Unit Price / Subtotal
         fun drawItem(name: String, qty: String, unit: String, price: String, p: Paint) {
             val qtyWidth = p.measureText(qty)
             val unitWidth = p.measureText(unit)
             val priceWidth = p.measureText(price)
 
             val priceX = width - marginX - priceWidth
-            val unitX = width - marginX - 120f - unitWidth   // ช่องหน่วยละ
-            val qtyX = width - marginX - 240f - qtyWidth     // ช่องจำนวน
+            val unitX = width - marginX - 120f - unitWidth   // Unit price column
+            val qtyX = width - marginX - 240f - qtyWidth     // Quantity column
 
             val maxNameWidth = printWidth - 260f
 
@@ -216,7 +215,7 @@ object DBluetoothPrinter {
             y += layout.height + 8f
         }
 
-        // --- เริ่มวาดหัวบิล ---
+        // --- Draw Header ---
         docTitle.split("\n").forEach { drawCenterWrap(it, boldPaint) }
         y += 10f
         drawCenterWrap("บริษัท ตั้งเจริญมีนบุรี จำกัด", boldPaint)
@@ -226,7 +225,7 @@ object DBluetoothPrinter {
         drawCenterWrap(hqLine, paint)
         drawLine()
 
-        // --- ข้อมูลบิล ---
+        // --- Receipt Metadata ---
         val currentDate = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("th", "TH")).format(Date())
         val prefix = if (docTitle.contains("ใบกำกับภาษี")) "V" else ""
         val invoiceNo = if (orderId > 0) String.format("%s%s%07d", prefix, routeId, orderId) else "......................"
@@ -239,13 +238,13 @@ object DBluetoothPrinter {
 
         if (!customer.address.isNullOrEmpty()) {
             var addr = customer.address.replace("\n", " ").replace("(สำนักงานใหญ่)", "").trim()
-            // ถ้าเป็นบริษัทมหาชน ให้ใส่ (สำนักงานใหญ่) กลับเข้าไปตามเงื่อนไขใหม่
+            // Add (Head Office) suffix for public companies per business rules
             if (storeName.contains("มหาชน")) {
                 addr = "$addr (สำนักงานใหญ่)"
             }
             drawLeftWrap("ที่อยู่: $addr", paint)
         }
-        // แสดงเลขประจำตัวผู้เสียภาษีลูกค้าเฉพาะใบกำกับภาษี — ใบส่งของไม่ต้องมี
+        // Customer Tax ID is displayed on Tax Invoices only
         if (!customer.tax_id.isNullOrEmpty() && docTitle.contains("ใบกำกับภาษี")) {
             drawLeftWrap("เลขประจำตัวผู้เสียภาษี: ${customer.tax_id}", paint)
         }
@@ -263,7 +262,7 @@ object DBluetoothPrinter {
 
         drawLine()
 
-        // --- หัวตารางสินค้า ---
+        // --- Table Headers ---
         val headerY = y + boldPaint.textSize
         canvas.drawText("รายการ", marginX, headerY, boldPaint)
 
@@ -276,7 +275,7 @@ object DBluetoothPrinter {
         y += boldPaint.textSize + 12f
         drawLine()
 
-        // --- รายการสินค้า ---
+        // --- Product Items ---
         var total = 0.0
         quantities.filter { it.value > 0 }.forEach { (pId, qty) ->
             val product = products.find { it.id == pId }
@@ -295,7 +294,7 @@ object DBluetoothPrinter {
         }
         drawLine()
 
-        // --- สรุปยอด ---
+        // --- Totals Summary ---
         val netTotal = total
         val isTaxInvoice = docTitle.contains("ใบกำกับภาษี")
 
@@ -308,25 +307,25 @@ object DBluetoothPrinter {
         drawRow("ยอดเงินสุทธิ", String.format("%,.2f", netTotal), boldPaint)
         drawLine()
 
-        // --- ผู้ส่งของ (อยู่ใต้เส้น ------ ของยอดเงินสุทธิทันที) ---
+        // --- Signatures ---
         val senderText = "ผู้ส่งของ ($driverId) ...................."
         y += paint.textSize
         canvas.drawText(senderText, marginX, y, paint)
         y += 20f
 
-        // --- เว้นพื้นที่ประทับตรา / ผู้รับของ ---
+        // Padding for stamp and receiver signature
         y += 220f
         val signText1 = "ผู้รับของ ...................."
         canvas.drawText(signText1, marginX, y, paint)
 
         y += 80f
 
-        // ตัดกระดาษให้พอดีกับความยาวจริง
+        // Crop bitmap to actual content height
         return Bitmap.createBitmap(tempBitmap, 0, 0, width, y.toInt())
     }
 
     // =========================================================================
-    // 🌟 ระบบแปลงภาพเป็นรหัสเครื่องพิมพ์ (Raster Image)
+    // Conversion system: Bitmap to printer-specific Raster Image commands
     // =========================================================================
     private fun printBitmap(outputStream: OutputStream, bitmap: Bitmap) {
         val width = bitmap.width

@@ -8,14 +8,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.example.myapplication1.R
 
-// 🌟 ประกาศตัวแปรดึงฟอนต์ Sarabun มาใช้
+// Define Sarabun font family
 val SarabunFontFamily = FontFamily(
     Font(R.font.sarabun_regular, FontWeight.Normal)
-    // ถ้าคุณมีไฟล์ฟอนต์ตัวหนา (Bold) ด้วย ให้เพิ่มบรรทัดล่างนี้เข้าไป (ถ้าไม่มีไม่ต้องใส่ครับ)
+    // Uncomment the following line if you have the bold font file
     // , Font(R.font.sarabun_bold, FontWeight.Bold)
 )
 
-// 🌟 บังคับให้ Material3 ทุกขนาดตัวอักษรในแอป หันมาใช้ Sarabun ทั้งหมด
+// Configure Material3 Typography to use Sarabun font family for all text styles
 val Typography = Typography(
     displayLarge = TextStyle(fontFamily = SarabunFontFamily, fontWeight = FontWeight.Normal, fontSize = 57.sp),
     displayMedium = TextStyle(fontFamily = SarabunFontFamily, fontWeight = FontWeight.Normal, fontSize = 45.sp),

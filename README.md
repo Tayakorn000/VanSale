@@ -191,4 +191,4 @@ app/src/main/
 
 ## License
 
-Proprietary. All rights reserved.
+Tayakorn Wetchakun
